@@ -1,0 +1,998 @@
+<?php
+
+include_once '../config.php';
+$pagename = 'Manage Part Number';
+include_once "inc/meta.php";
+
+$_SESSION[LOGIN_ADMIN]['url_to_return'] = curPageURL();
+
+if(!isset($_SESSION[LOGIN_ADMIN]['admin_username']) && $_SESSION[LOGIN_ADMIN]['admin_username'] == '')
+{
+    redirect(URL_ADMIN."login.php");
+}
+
+$validate=new Validation();
+$stat=array();
+if(isset($_GET['action']) && trim($_GET['action'])!='')
+$pgAct=strtolower($_GET['action']);
+
+if($_SESSION['success']!="" || $_SESSION['error']!="" || $_SESSION['info']!="")
+{
+    $stat['success'] = $_SESSION['success'];
+    unset($_SESSION['success']);
+    $stat['error'] = $_SESSION['error'];
+    unset($_SESSION['error']);
+    $stat['info'] = $_SESSION['info'];
+    unset($_SESSION['info']);
+}
+
+
+if(isset($_POST['submit']))
+{ 
+ 
+    $validate->addRule(trim($_POST['banner_title']),'',"Banner Title",true);
+    $validate->addRule(trim($_POST['title']),'',"Title",true);
+    $validate->addRule(trim($_POST['description']),'',"Description",true);
+    if(isset($_FILES["banner_image"]["name"]) && $_FILES["banner_image"]["name"]!='')
+    {
+        $filename = basename($_FILES['banner_image']['name']);
+        $ext = strtolower(substr($filename, strrpos($filename, '.')+1));
+        if(!in_array($ext,array('webp', 'svg')))
+        {
+            $stat['error'] = 'only webp and svg are allowed';
+        }
+    }
+    $validate->addRule($_POST['status'],'',"Status",true);
+
+    if($validate->validate() && count($stat)==0)
+    {
+        
+        if($stat['error']==0)
+        {
+            $data= array(
+                'banner_title'         =>  escape(trim($_POST['banner_title'])),
+                'title'                =>  escape(trim($_POST['title'])),
+                'description'          =>  stripslashes($_POST['description']),
+                'status'               =>  $_POST['status'],
+                );
+
+                if(isset($_FILES["banner_image"]["name"]) && $_FILES["banner_image"]["name"]!='')
+                {
+                    $filename = basename($_FILES['banner_image']['name']);
+                    $ext = strtolower(substr($filename, strrpos($filename, '.')+1));
+                    if(in_array($ext,array('webp','svg')))
+                    {
+                        $newfile=md5(microtime()).".".$ext;
+                        if(move_uploaded_file($_FILES['banner_image']['tmp_name'],"../uploads/ge_turbine_control/".$newfile))
+                        {
+                            copy("../staging/uploads/ge_turbine_control/".$newfile,"../staging/uploads/ge_turbine_control/".$newfile);
+                            $banner_image= $db->getVal("SELECT banner_image FROM ge_turbine_control WHERE id ='".$_REQUEST['id']."'");
+                            @unlink("../uploads/ge_turbine_control/".$banner_image);
+                            $data['banner_image'] = $newfile;
+                        }
+                    }
+                }
+            $id = $db->updateAry("ge_turbine_control",$data,"where id = 2");
+            
+            if(!is_null($id))
+            {
+                
+                $headingdata= array(
+                    'heading'           => $_POST['heading'],
+                );
+                $updateHeading = $db->updateAry("ge_turbine_control",$headingdata,"where id = '".$id."'");
+                
+                $deltt = $db->delete("ge_listing", "where turbine_id=2");
+         
+                for ($i = 0; $i < count($_POST['type_title']); $i++) 
+                {
+                    $data1 = array(
+                        'turbine_id'          => 2,
+                        'type_title'          => $_POST['type_title'][$i],
+                        'type_description'    => $_POST['type_description'][$i],
+                        'is_featured'         => ($_POST['is_featured'][$i]) ? 1 : 0,
+                    );
+                
+                    if (isset($_FILES["type_image"]["name"][$i]) && $_FILES["type_image"]["name"][$i] != '')
+                    {
+                        $filename = basename($_FILES['type_image']['name'][$i]);
+                        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+                
+                        if (in_array($ext, array('webp', 'svg'))) 
+                        {
+                            $newfile = md5(microtime()) . "." . $ext;
+                
+                            if (move_uploaded_file($_FILES['type_image']['tmp_name'][$i], "../uploads/ge_turbine_control/ge_list/" . $newfile)) 
+                            {
+                                copy("../staging/uploads/ge_turbine_control/" . $newfile, "../staging/uploads/ge_turbine_control/ge_list/" . $newfile);
+                                $type_image = $db->getVal("SELECT type_image FROM ge_turbine_control WHERE id = '" . $_REQUEST['id'] . "'");
+                                @unlink("../uploads/ge_turbine_control/ge_list/" . $type_image);
+                                $data1['type_image'] = $newfile;
+                            } 
+                        }
+                    }
+                    else
+                    {
+                        $data1['type_image'] = $_POST['existing_img'][$i];
+                    }
+                
+                    $Flgin = $db->insertAry("ge_listing", $data1);
+                    
+                }
+                
+                $deliverdata= array(
+                    'title4'           => $_POST['title4'],
+                );
+                $updateDeliver = $db->updateAry("ge_turbine_control",$deliverdata,"where id = '".$id."'");
+                
+                $deltt=$db->delete("ge_delivers","where turbine_id=2");
+                for($i=0;$i<count($_POST['deliver_title']); $i++)
+                {
+                    $data2= array(
+                        'turbine_id'      => 2,
+                        'deliver_title'   => $_POST['deliver_title'][$i],
+                        'content'         => $_POST['content'][$i],
+                        'color'           => $_POST['color'][$i],
+                    );
+
+                    if (isset($_FILES["deliver_image"]["name"][$i]) && $_FILES["deliver_image"]["name"][$i] != '')
+                    {
+                        $filename = basename($_FILES['deliver_image']['name'][$i]);
+                        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+                
+                        if (in_array($ext, array('webp', 'svg'))) 
+                        {
+                            $newfile = md5(microtime()) . "." . $ext;
+                
+                            if (move_uploaded_file($_FILES['deliver_image']['tmp_name'][$i], "../uploads/ge_turbine_control/ge_delivers/" . $newfile)) 
+                            {
+                                copy("../staging/uploads/ge_turbine_control/" . $newfile, "../staging/uploads/ge_turbine_control/ge_delivers/" . $newfile);
+                                $deliver_image = $db->getVal("SELECT deliver_image FROM ge_turbine_control WHERE id = '" . $_REQUEST['id'] . "'");
+                                @unlink("../uploads/ge_turbine_control/ge_delivers/" . $deliver_image);
+                                $data2['deliver_image'] = $newfile;
+                            }
+                        }
+                    } 
+                    else 
+                    {
+                        $data2['deliver_image'] = $_POST['existdeliver_image'][$i];
+                    }
+
+                    $Flgin = $db->insertAry("ge_delivers",$data2);
+                }
+
+                $_SESSION["success"]=" Record Updated Successfully";
+                redirect("manage_ge_turbine_control.php");
+                exit;
+            }
+        }
+    }
+}
+    
+
+if($_GET['action'] =='delete')
+{
+    $image= $db->getVal("SELECT image FROM ge_listing WHERE id ='".$_REQUEST['id']."'");
+    @unlink("../uploads/ge_list/".$image);
+    $del=$db->delete("ge_listing","where id='".$_GET['id']."'");
+    if(!is_null($del))
+    {
+        echo $db->getErMsg();
+        $_SESSION["success"] =" Record Deleted Successfully";
+        redirect("manage_gelisting.php");
+    }
+    else
+    {
+        echo $db->getErMsg();
+        $_SESSION["error"] =" Record Deletion Failed";
+        redirect("manage_gelisting.php");
+    }
+}
+?>
+<head>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+
+<style>
+        body {
+            
+        }
+
+        .card {
+            background-color: #fff;
+            border-radius: 0.5rem;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            margin-top: 20px;
+            z-index: 0;
+            border: none;
+            position: relative
+        }
+
+        .form-card {
+            padding: 20px;
+            text-align: left
+        }
+
+        label {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .action-buttons {
+            margin-top: 20px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        * {
+    margin: 0;
+    padding: 0
+}
+
+html {
+    height: 100%
+}
+
+
+#heading {
+    text-transform: uppercase;
+    color: #673AB7;
+    font-weight: normal
+}
+
+#msform {
+    text-align: center;
+    position: relative;
+    margin-top: 20px
+}
+
+#msform fieldset {
+    background: white;
+    border: 0 none;
+    border-radius: 0.5rem;
+    box-sizing: border-box;
+    width: 100%;
+    margin: 0;
+    padding-bottom: 20px;
+    position: relative
+}
+
+.form-card {
+    text-align: left
+}
+
+#msform fieldset:not(:first-of-type) {
+    display: none
+}
+
+#msform input,
+#msform textarea {
+    padding: 8px 15px 8px 15px;
+    border: 1px solid #ccc;
+    border-radius: 0px;
+    margin-bottom: 25px;
+    margin-top: 2px;
+    width: 100%;
+    box-sizing: border-box;
+    font-family: montserrat;
+    color: #2C3E50;
+    background-color: #ECEFF1;
+    font-size: 16px;
+    letter-spacing: 1px
+}
+
+#msform input:focus,
+#msform textarea:focus {
+    -moz-box-shadow: none !important;
+    -webkit-box-shadow: none !important;
+    box-shadow: none !important;
+    border: 1px solid #673AB7;
+    outline-width: 0
+}
+
+#msform .action-button {
+    width: 100px;
+    background: #673AB7;
+    font-weight: bold;
+    color: white;
+    border: 0 none;
+    border-radius: 0px;
+    cursor: pointer;
+    padding: 10px 5px;
+    margin: 10px 0px 10px 5px;
+    float: right
+}
+
+#msform .action-button:hover,
+#msform .action-button:focus {
+    background-color: #311B92
+}
+
+#msform .action-button-previous {
+    width: 100px;
+    background: #616161;
+    font-weight: bold;
+    color: white;
+    border: 0 none;
+    border-radius: 0px;
+    cursor: pointer;
+    padding: 10px 5px;
+    margin: 10px 5px 10px 0px;
+    float: right
+}
+
+#msform .action-button-previous:hover,
+#msform .action-button-previous:focus {
+    background-color: #000000
+}
+
+.card {
+    z-index: 0;
+    border: none;
+    position: relative
+}
+
+.fs-title {
+    font-size: 25px;
+    color: #673AB7;
+    margin-bottom: 15px;
+    font-weight: normal;
+    text-align: left
+}
+
+.purple-text {
+    color: #673AB7;
+    font-weight: normal
+}
+
+.steps {
+    font-size: 25px;
+    color: gray;
+    margin-bottom: 10px;
+    font-weight: normal;
+    text-align: right
+}
+
+.fieldlabels {
+    color: gray;
+    text-align: left
+}
+
+#progressbar {
+    margin-bottom: 30px;
+    overflow: hidden;
+    color: lightgrey
+}
+
+#progressbar .active {
+    color: #673AB7
+}
+
+#progressbar li {
+    list-style-type: none;
+    font-size: 15px;
+    width: 25%;
+    float: left;
+    position: relative;
+    font-weight: 400
+}
+
+#progressbar #account:before {
+    font-family: FontAwesome;
+    content: "1"
+}
+
+#progressbar #personal:before {
+    font-family: FontAwesome;
+    content: "2"
+}
+
+#progressbar #payment:before {
+    font-family: FontAwesome;
+    content: "3"
+}
+
+#progressbar #confirm:before {
+    font-family: FontAwesome;
+    content: "4"
+}
+
+#progressbar li:before {
+    width: 50px;
+    height: 50px;
+    line-height: 45px;
+    display: block;
+    font-size: 20px;
+    color: #ffffff;
+    background: lightgray;
+    border-radius: 50%;
+    margin: 0 auto 10px auto;
+    padding: 2px
+}
+
+#progressbar li:after {
+    content: '';
+    width: 100%;
+    height: 2px;
+    background: lightgray;
+    position: absolute;
+    left: 0;
+    top: 25px;
+    z-index: -1
+}
+
+#progressbar li.active:before,
+#progressbar li.active:after {
+    background: #673AB7
+}
+
+.progress {
+    height: 20px
+}
+
+.progress-bar {
+    background-color: #673AB7
+}
+
+.fit-image {
+    width: 100%;
+    object-fit: cover
+}
+.space {
+    margin-bottom: -1.5rem!important;
+}
+    </style>
+
+    
+</head>
+<body class="hold-transition sidebar-mini layout-fixed">
+
+<div class="wrapper">
+  <?php include_once "inc/inc.header.php"; ?>
+  <?php include_once "inc/inc.sidebar.php"; ?>
+  <div class="content-wrapper">
+    <section class="content-header">
+      <div class="container-fluid">
+        <div class="row mb-2">
+          <div class="col-sm-6">
+            <h1></h1>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="content">
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <?php echo msg($stat);?>
+                    <?php
+                        $blog_user = $db->getRows("select * from ge_listing where status=1 order by id desc");
+                        if($_REQUEST['action']=="edit")
+                        {
+                            $aryForm=$db->getRow("select * from ge_listing where id ='".$_REQUEST['id']."'");
+                        }
+                    ?>
+                 <div class="container-fluid" style="width: 240%!important;">
+                    <div class="row justify-content-left">
+                        <div class="col-11 col-sm-10 col-md-10 col-lg-6 col-xl-5 text-center p-0 mt-3 mb-2">
+                            <div class="card px-0 pt-4 pb-0 mt-3 mb-3">
+                                <h2 id="heading">Manage GE Turbine Control</h2>
+                                <p>Fill all form field to go to next step</p>
+                                <form id="msform" action="" enctype="multipart/form-data" class="form-horizontal form-label-left" method="post"> 
+                                    <!-- progressbar -->
+                                    <ul id="progressbar">
+                                        <li class="active" id="account"><strong>Banner Content</strong></li>
+                                        <li id="personal"><strong>GE Types</strong></li>
+                                        <li id="payment"><strong>GE Delivers</strong></li>
+                                        <li id="confirm"><strong>Finish</strong></li>
+                                    </ul>
+                                    <div class="progress">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" aria-valuemin="0" aria-valuemax="100"></div>
+                                    </div> <br> <!-- fieldsets -->
+                                    <fieldset>
+                                        <div class="form-card">
+                                             <div class="row">
+                                                <div class="col-7">
+                                                    <h2 class="fs-title">Banner Content:</h2>
+                                                </div>
+                                                <div class="col-5">
+                                                    <h2 class="steps">Step 1 - 4</h2>
+                                                </div>
+                                            </div> 
+                                            <?php $getBannerData = $db->getRow("SELECT * FROM ge_turbine_control "); ?>
+                                            <div class="form-group row">
+                                                <div class="col-md-3 col-sm-3 col-xs-12">
+                                                    <label for="banner_title" class="control-label fieldlabels float-right ">Banner Title <span class="required"> *</span></label>
+                                                </div>
+                                                <div class="col-md-6 col-sm-6 col-xs-12">
+                                                    <input type="text" class="form-control" id="banner_title" name="banner_title"  value="<?php if($getBannerData['banner_title']!=''){ echo $getBannerData['banner_title']; }else{ echo $_POST['banner_title']; } ?>" placeholder="Banner Title">
+                                                </div>
+                                            </div>
+                                            <div class="form-group row">
+                                                <div class="col-md-3 col-sm-3 col-xs-12">
+                                                    <label for="banner_image" class="control-label fieldlabels float-right ">Banner Image<span class="required"> * </span>
+                                                </label>
+                                                </div>
+                                                <div class="col-md-6 col-sm-6 col-xs-12">
+                                                    <input id="banner_image" name="banner_image" type="file">
+                                                        <?php
+                                                        if($getBannerData['banner_image'] != '' && file_exists("../uploads/ge_turbine_control/".$getBannerData['banner_image']))
+                                                        { 
+                                                            echo '<img src="'.URL_ROOT.'uploads/ge_turbine_control/'.$getBannerData['banner_image'].'" width="300" height="100">';
+                                                        } 
+                                                        ?>
+                                                </div>
+                                            </div>
+                                            <div class="form-group row" style="margin-left: 396px;">
+                                                Recommended size : 1920*550px approx.
+                                            </div>
+                                            <div class="form-group row">
+                                                <div class="col-md-3 col-sm-3 col-xs-12">
+                                                    <label for="title" class="control-label fieldlabels float-right ">Title 2<span class="required"> *</span></label>
+                                                </div>
+                                                <div class="col-md-6 col-sm-6 col-xs-12">
+                                                    <input type="text" class="form-control" id="title" name="title"  value="<?php if($getBannerData['title']!=''){ echo $getBannerData['title']; }else{ echo $_POST['title']; } ?>" placeholder="Title 2">
+                                                </div>
+                                            </div>
+                                            <div class="form-group row">
+                                                <div class="col-md-3 col-sm-3 col-xs-12">
+                                                    <label for="description" class="control-label fieldlabels float-right ">Description<span class="required"> *</span></label>
+                                                </div>
+                                                <div class="col-md-6 col-sm-6 col-xs-12">
+                                                    <textarea class="form-control textarea" id="description" name="description"  type="description"><?php if($getBannerData['description']!=''){ echo $getBannerData['description']; }else{ echo $_POST['description']; } ?></textarea>
+                                                </div>
+                                            </div>
+                                            <div class="form-group row">
+                                                <div class="col-md-3 col-sm-3 col-xs-12">
+                                                    <label for="title" class="control-label fieldlabels float-right ">Status<span class="required"> *</span></label>
+                                                </div>
+                                                <select class="form-control col-md-6 col-sm-6 col-xs-12" id="status" name="status">
+                                                    <option value="" selected hidden>Select status</option>
+                                                    <option value="1" <?php if($getBannerData['status']=='1'){ echo 'selected'; }elseif(isset($_POST)){if( $_POST['status'] == 1){echo 'selected'; }; } ?>>Active</option>
+                                                    <option value="2" <?php if($getBannerData['status']=='2'){ echo 'selected'; }elseif(isset($_POST)){if( $_POST['status'] == 2){echo 'selected'; }; } ?>>Inactive</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <!-- <div class="action-buttons"> -->
+                                            <input type="button" name="next" class="next action-button" value="Next" />
+                                        <!-- </div> -->
+                                    </fieldset>
+                                    <fieldset>
+                                        <div class="form-card">
+                                            <div class="row">
+                                                <div class="col-7">
+                                                    <h2 class="fs-title">GE Types:</h2>
+                                                </div>
+                                                <div class="col-5">
+                                                    <h2 class="steps">Step 2 - 4</h2>
+                                                </div>
+                                            </div>
+                                            <?php $getBannerData = $db->getRow("SELECT * FROM ge_turbine_control ");
+                                            $getTypeData = $db->getRows("SELECT * FROM ge_listing WHERE turbine_id=2"); ?>
+                                            <div class="form-group row">
+                                                <div class="col-md-3 col-sm-3 col-xs-12">
+                                                    <label for="heading" class="control-label fieldlabels float-right ">Heading<span class="required"> *</span></label>
+                                                </div>
+                                                <div class="col-md-6 col-sm-6 col-xs-12">
+                                                    <input type="text" class="form-control" id="heading1" name="heading"  value="<?php if($getBannerData['heading']!=''){ echo $getBannerData['heading']; }elseif(isset($_POST)){echo $_POST['heading']; } ?>" placeholder="Heading">
+                                                </div>
+                                            </div>
+                                            <div class="form-group row">
+                                                <label class="control-label fieldlabels col-md-3 col-sm-3 col-xs-12" for="slot"></label>
+                                                <div class="col-md-6 col-sm-6 col-xs-12">
+                                                    <div class="panel panel-primary service-panel">
+                                                        <div class="panel-heading">
+                                                            <div class="row">
+                                                                <div class="col-xs-12 col-md-12 text-right mb-2">
+                                                                    <button class="btn btn-danger add_field_button1">Add More <i class="fa fa-plus-circle" aria-hidden="true"></i></button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="panel-body">
+                                                            
+                                                            <div class="input_fields_wrap1">
+                                                                
+                                                        <?php if($getTypeData !=''){ ?>
+                                                            <?php
+                                                            foreach ($getTypeData as $keys => $typeData): ?>
+                                                                <div class="row colordivappend1" id="colorqt1" style="margin-bottom: 5px;">
+                                                                    <div class="col-md-10 str_box space">
+                                                                        <input type="text" name="type_title[]" id="type_title<?php echo $keys+1; ?>" class="form-control col-md-12 col-xs-12 type_title" placeholder="Enter GE Title" value="<?php if($typeData['type_title']!=''){ echo $typeData['type_title']; }elseif(isset($_POST)){echo $_POST['type_title']; } ?>">
+                                                                    </div>
+                                                                    <div class="col-md-2 del_box space">
+                                                                        <button type="button" class="btn btn-danger remove_field1 btn-block" title="Delete"><i class="fa fa-trash"></i></button>
+                                                                    </div>
+                                                                    <div class="col-md-12 str_box space">
+                                                                        <textarea name="type_description[]" id="type_description<?php echo $keys+1; ?>" placeholder="Enter Description" class="form-control col-md-12 col-xs-12 type_description"><?php if($typeData['type_description']!=''){ echo $typeData['type_description']; }elseif(isset($_POST)){echo $_POST['type_description']; } ?></textarea>
+                                                                    </div>
+                                                                    <div class="col-md-8 str_box ">
+                                                                        <input id="type_image<?php echo $keys+1; ?>" name="type_image[]" type="file" class="form-control col-md-12 col-xs-12 type_image" value="<?php if($typeData['type_image']!=''){ echo $typeData['type_image']; }else{ echo $_POST['type_image']; } ?>">
+                                                                        <?php
+                                                                        if($typeData['type_image'] != '' && file_exists("../uploads/ge_turbine_control/ge_list/".$typeData['type_image']))
+                                                                        { 
+                                                                            echo '<img src="'.URL_ROOT.'uploads/ge_turbine_control/ge_list/'.$typeData['type_image'].'" width="50" height="50">';
+                                                                        } 
+                                                                        ?>
+                                                                        <input type="hidden" name="existing_img[]" value="<?php echo $typeData['type_image']; ?>" id="existing_img<?php echo $keys+1; ?>">
+                                                                    </div>
+                                                                    <div class="col-md-4 end_box space">
+                                                                        <label for="is_featured"> Is Featured<input type="checkbox" class="is-featured-checkbox" id="is_featured<?php echo $keys+1; ?>" name="is_featured[]" value="1" <?php if ($typeData['is_featured'] == 1) echo 'checked'; ?>> </label>
+                                                                    </div>
+                                                                </div> 
+                                                            <?php endforeach ?>
+
+                                                           <?php  }else{ ?>  
+                                                                <div class="row colordivappend1" id="colorqt1" style="margin-bottom: 5px;">
+                                                                    <div class="col-md-10 str_box space">
+                                                                        <input type="text" name="type_title[]" id="type_title1"  class="form-control col-md-12 col-xs-12 type_title" placeholder="Enter GE Title" value="<?php if(isset($_POST)){echo $_POST['type_title']; } ?>">
+                                                                    </div>
+                                                                    <div class="col-md-2 del_box space">
+                                                                        <button type="button" class="btn btn-danger remove_field1 btn-block" title="Delete"><i class="fa fa-trash"></i></button>
+                                                                    </div>
+                                                                    <div class="col-md-12 str_box space">
+                                                                        <textarea name="type_description[]" id="type_description1" placeholder="Enter Description"  class="form-control col-md-12 col-xs-12 type_description" ><?php if(isset($_POST)){echo $_POST['type_description']; } ?></textarea>
+                                                                    </div>
+                                                                    <div class="col-md-8 str_box ">
+                                                                        <input id="type_image1" name="type_image[]" type="file" class="form-control col-md-12 col-xs-12 type_image" value="<?php if($typeData['type_image']!=''){ echo $typeData['type_image']; }else{ echo $_POST['type_image']; } ?>">
+                                                                            <?php
+                                                                           if($typeData['type_image'] != '' && file_exists("../uploads/ge_turbine_control/ge_list/".$typeData['type_image']))
+                                                                           { 
+                                                                               echo '<img src="'.URL_ROOT.'uploads/ge_turbine_control/ge_list/'.$typeData['type_image'].'" width="50" height="50">';
+                                                                           } 
+                                                                            ?>
+                                                                              <input type="hidden" name="existing_img[]" value="<?php echo $typeData['type_image']; ?>" id="existing_img<?php echo $keys+1; ?>">
+                                                                    </div>
+                                                                    <div class="col-md-4 end_box space">
+                                                                        <label for="is_featured"> Is Featured<input type="checkbox" class="is-featured-checkbox" id="is_featured<?php echo $keys+1; ?>" name="is_featured[]" value="1" <?php if ($typeData['is_featured'] == 1) echo 'checked'; ?>> </label>
+                                                                    </div>
+                                                                </div> 
+                                                            <?php } ?>                        
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>  
+                                            </div>
+                                        </div> 
+                                        <!-- <div class="action-buttons"> -->
+                                            <input type="button" name="next" class="next action-button" value="Next" />
+                                             <input type="button" name="previous" class="previous action-button-previous" value="Previous" />
+                                        <!-- </div>  -->
+                                    </fieldset>
+                                    <fieldset>
+                                        <div class="form-card">
+                                            <div class="row">
+                                                <div class="col-7">
+                                                    <h2 class="fs-title">GE Delivers:</h2>
+                                                </div>
+                                                <div class="col-5">
+                                                    <h2 class="steps">Step 3 - 4</h2>
+                                                </div>
+                                            </div> 
+                                            <?php $getBannerData = $db->getRow("SELECT * FROM ge_turbine_control ");
+                                            $getDeliversData = $db->getRows("SELECT * FROM ge_delivers WHERE turbine_id=2"); ?>
+                                            <div class="form-group row">
+                                                <div class="col-md-3 col-sm-3 col-xs-12">
+                                                    <label for="title4" class="control-label fieldlabels float-right ">Title 4<span class="required"> *</span></label>
+                                                </div>
+                                                <div class="col-md-6 col-sm-6 col-xs-12">
+                                                    <input type="text" class="form-control" id="title4" name="title4"  value="<?php if($getBannerData['title4']!=''){ echo $getBannerData['title4']; }elseif(isset($_POST)){echo ucfirst($_POST['title4']); } ?>" placeholder="Title 4">
+                                                </div>
+                                            </div>
+                                            <div class="form-group row">
+                                            <label class="control-label fieldlabels col-md-3 col-sm-3 col-xs-12" for="slot"></label>
+                                                <div class="col-md-6 col-sm-6 col-xs-12">
+                                                    <div class="panel panel-primary service-panel">
+                                                        <div class="panel-heading">
+                                                            <div class="row">
+                                                                <div class="col-xs-12 col-md-12 text-right mb-2">
+                                                                    <button class="btn btn-danger add_field_button">Add More <i class="fa fa-plus-circle" aria-hidden="true"></i></button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="panel-body">
+                                                            <div class="input_fields_wrap">
+                                                            <?php foreach ($getDeliversData as $keys => $deliverData): ?>
+                                                                <div class="row colordivappend" id="colorqt" style="margin-bottom: 5px;">
+                                                                    <div class="col-md-10 str_box space" >
+                                                                        <input type="text" name="deliver_title[]" id="deliver_title1"  class="form-control col-md-12 col-xs-12 deliver_title" placeholder="Enter Title" value="<?php if($deliverData['deliver_title']!=''){ echo $deliverData['deliver_title']; }elseif(isset($_POST)){echo $_POST['deliver_title']; } ?>">
+                                                                    </div>
+                                                                    <div class="col-md-2 del_box space">
+                                                                        <button type="button" class="btn btn-danger remove_field btn-block" title="Delete"><i class="fa fa-trash"></i></button>
+                                                                    </div>
+                                                                    <div class="col-md-12 str_box space" >
+                                                                        <textarea name="content[]" id="content1" placeholder="Enter content"  class="form-control col-md-12 col-xs-12 content" ><?php if($deliverData['content']!=''){ echo $deliverData['content']; }elseif(isset($_POST)){echo $_POST['content']; } ?></textarea>
+                                                                    </div>
+                                                                    <div class="col-md-6 str_box space">
+                                                                        <input type="text" name="color[]" id="color1" placeholder="Enter color"  class="form-control col-md-12 col-xs-12 color" value="<?php if($deliverData['color']!=''){ echo $deliverData['color']; }elseif(isset($_POST)){echo $_POST['color']; } ?>">
+                                                                    </div>
+                                                                    <div class="col-md-6 end_box ">
+                                                                        <input id="deliver_image1" name="deliver_image[]" type="file" class="form-control col-md-12 col-xs-12 deliver_image" value="<?php if($deliverData['deliver_image']!=''){ echo $deliverData['deliver_image']; }else{ echo $_POST['deliver_image']; } ?>">
+                                                                            <?php
+                                                                            if($deliverData['deliver_image'] != '' && file_exists("../uploads/ge_turbine_control/ge_delivers/".$deliverData['deliver_image']))
+                                                                            { 
+                                                                                echo '<img src="'.URL_ROOT.'uploads/ge_turbine_control/ge_delivers/'.$deliverData['deliver_image'].'" width="50" height="100">';
+                                                                            } 
+                                                                            ?>
+                                                                              <input type="hidden" name="existdeliver_image[]" value="<?php echo $deliverData['deliver_image']; ?>" id="existdeliver_image<?php echo $keys+1; ?>">
+                                                                    </div>
+                                                                </div>   
+                                                            <?php endforeach ?>                        
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>  
+                                            </div>
+                                        </div>
+                                        <!-- <div class="action-buttons"> -->
+                                            <input type="button" name="next" class="next action-button" value="Next" /> <input type="button" name="previous" class="previous action-button-previous" value="Previous" />
+                                        <!-- </div> -->
+                                    </fieldset>
+                                    <fieldset>
+                                        <div class="form-card">
+                                            <div class="row">
+                                                <div class="col-7">
+                                                    <h2 class="fs-title">Finish:</h2>
+                                                </div>
+                                                <div class="col-5">
+                                                    <h2 class="steps">Step 4 - 4</h2>
+                                                </div>
+                                            </div> <br><br>
+                                            <h2 class="purple-text text-center"><strong>SUCCESS !</strong></h2> <br>
+                                            <div class="row justify-content-center">
+                                                <div class="col-3"> <img src="https://i.imgur.com/GwStPmg.png" class="fit-image"> </div>
+                                            </div> <br><br>
+                                            <div class="row justify-content-center">
+                                                <div class="col-7 text-center">
+                                                    <h5 class="purple-text text-center">You are almost there</h5>
+                                                    <button type="submit" name="submit" class="btn btn-success" value="submit"> Submit </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                                    <input type="button" name="previous" class="previous col-7 text-center action-button-previous" value="Previous" style="float:center!important"/>
+                                    </fieldset>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                </div> 
+            </div>
+        </div>
+    </section>
+  </div>
+
+  <?php include_once "inc/inc.footer.php"; ?>
+  <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+  <script>
+      $("form#msform").parsley();
+  </script>
+<script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+<script>
+$(document).ready(function() {
+    $(".is-featured-checkbox").change(function() {
+        if ($(this).prop("checked")) {
+            // Uncheck other checkboxes with the same class
+            $(".is-featured-checkbox").not(this).prop("checked", false);
+        }
+    });
+});
+</script>
+
+<script>
+$(document).ready(function () {
+  var current_fs, next_fs, previous_fs; //fieldsets
+  var opacity;
+  var current = 1;
+  var steps = $("fieldset").length;
+
+  setProgressBar(current);
+  $(".next").click(function () {
+    console.log("Next button clicked");
+    current_fs = $(this).parent();
+    next_fs = $(this).parent().next();
+
+    //Add Class Active
+    $("#progressbar li").eq($("fieldset").index(next_fs)).addClass("active");
+
+    //show the next fieldset
+    next_fs.show();
+    //hide the current fieldset with style
+    current_fs.animate(
+      { opacity: 0 },
+      {
+        step: function (now) {
+          // for making fielset appear animation
+          opacity = 1 - now;
+
+          current_fs.css({
+            display: "none",
+            position: "relative"
+          });
+          next_fs.css({ opacity: opacity });
+        },
+        duration: 500
+      }
+    );
+    setProgressBar(++current);
+  });
+
+  $(".previous").click(function () {
+    current_fs = $(this).parent();
+    previous_fs = $(this).parent().prev();
+
+    //Remove class active
+    $("#progressbar li")
+      .eq($("fieldset").index(current_fs))
+      .removeClass("active");
+
+    //show the previous fieldset
+    previous_fs.show();
+
+    //hide the current fieldset with style
+    current_fs.animate(
+      { opacity: 0 },
+      {
+        step: function (now) {
+          // for making fielset appear animation
+          opacity = 1 - now;
+
+          current_fs.css({
+            display: "none",
+            position: "relative"
+          });
+          previous_fs.css({ opacity: opacity });
+        },
+        duration: 500
+      }
+    );
+    setProgressBar(--current);
+  });
+
+  function setProgressBar(curStep) {
+    var percent = parseFloat(100 / steps) * curStep;
+    percent = percent.toFixed();
+    $(".progress-bar").css("width", percent + "%");
+  }
+
+  $(".submit").click(function () {
+    return false;
+  });
+});
+
+</script>
+
+
+<script type="text/javascript">
+  var max_fields1 = 50; // maximum input boxes allowed
+var wrapper1 = $(".input_fields_wrap1"); // Fields wrapper
+var add_button1 = $(".add_field_button1"); // Add button ID
+var y = 1; // initial text box count
+
+$(add_button1).click(function (e) { // on add input button click
+    e.preventDefault();
+    if (y < max_fields1) { // max input box allowed
+        y++; // text box increment
+        if ($('#colorqt1').length) {
+
+            var clone1 = $('#colorqt1').clone();
+            clone1.find("input").val("");
+            clone1.find("input[type='text'], textarea").val(""); // Clear text and textarea values
+            clone1.find("input[type='checkbox']").prop("checked", false);
+            var fileInputClone1 = clone1.find("input[type='file']");
+            fileInputClone1.replaceWith(fileInputClone1.val('').clone(true));
+            clone1.appendTo($(wrapper1)).find(".type_title").attr("id", "type_title" + $(".colordivappend1").length).end().find(".type_description").attr("id", "type_description" + $(".colordivappend1").length).end().find(".type_image").attr("id", "type_image" + $(".colordivappend1").length);
+
+            var leny = $(".colordivappend1").length;
+
+        }
+    }
+});
+
+// on delete multiple fields
+$(wrapper1).on("click", ".remove_field1", function (e) { // user click on remove text
+    if ($(".remove_field1").length == 1) {
+        alert("Sorry at least 1 payment mode is required");
+        return false;
+    }
+    e.preventDefault();
+    $(this).closest('div.colordivappend1').remove();
+    y--;
+});
+
+// To handle file uploads
+$(wrapper1).on("change", ".type_image", function (e) {
+    var files = e.target.files;
+    var fileInput = $(this);
+
+    // Iterate through each selected file
+    for (var i = 0; i < files.length; i++) {
+        var reader = new FileReader();
+
+        // Closure to capture the file information.
+        reader.onload = (function (file) {
+            return function (e) {
+                // Store the file data in the input field
+                fileInput.data('file-data', {
+                    name: file.name,
+                    type: file.type,
+                    data: e.target.result
+                });
+            };
+        })(files[i]);
+
+        // Read in the file as a data URL.
+        reader.readAsDataURL(files[i]);
+    }
+});
+
+</script>
+
+<script type="text/javascript">
+    var max_fields      = 50; //maximum input boxes allowed
+    var wrapper         = $(".input_fields_wrap"); //Fields wrapper
+    var add_button      = $(".add_field_button"); //Add button ID
+    var x = 1; //initlal text box count
+
+    $(add_button).click(function(e){ //on add input button click
+        e.preventDefault();
+        if(x < max_fields){ //max input box allowed
+            x++; //text box increment
+            if ($('#colorqt').length) {
+               
+                var clone = $('#colorqt').clone();
+                clone.find("input").val("");
+                clone.find("input[type='text'], textarea").val("");
+                var fileInputClone = clone.find("input[type='file']");
+                fileInputClone.replaceWith(fileInputClone.val('').clone(true));
+                clone.appendTo($(wrapper)).find(".deliver_title").attr("id", "deliver_title"+$(".colordivappend").length ).end().find(".color").attr("id", "color"+$(".colordivappend").length ).end().find(".content").attr("id", "content"+$(".colordivappend").length).end().find(".deliver_image").attr("id", "deliver_image"+$(".colordivappend1").length);
+                
+                var len = $(".colordivappend").length;
+              
+
+            }
+        }
+    });
+    // on add 
+
+
+    // on delete multiple fields
+    $(wrapper).on("click",".remove_field", function(e){ //user click on remove text
+        if ($(".remove_field").length == 1) {
+            alert("Sorry atleat 1 payment mode is required");
+            return false;
+        }
+        e.preventDefault(); $(this).closest('div.colordivappend').remove(); x--;
+
+    });
+
+    
+// To handle file uploads
+$(wrapper).on("change", ".deliver_image", function (e) {
+    var files = e.target.files;
+    var fileInput = $(this);
+
+    // Iterate through each selected file
+    for (var i = 0; i < files.length; i++) {
+        var reader = new FileReader();
+
+        // Closure to capture the file information.
+        reader.onload = (function (file) {
+            return function (e) {
+                // Store the file data in the input field
+                fileInput.data('file-data', {
+                    name: file.name,
+                    type: file.type,
+                    data: e.target.result
+                });
+            };
+        })(files[i]);
+
+        // Read in the file as a data URL.
+        reader.readAsDataURL(files[i]);
+    }
+});
+</script>
+  </body>
+
+</html>
+
+  
