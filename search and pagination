@@ -1,0 +1,755 @@
+<?php
+
+    include("config.php");
+    $pagemetadesc = "";
+    $pagemetatitle = "";
+    $pagemetakeywords = "";
+
+    $getGEData = $db->getRow("SELECT * FROM ge_listing WHERE linkname='ge-mark-vi'");
+   
+    $limit = isset($_GET['entries']) ? (int)$_GET['entries'] : 4;
+
+if (isset($_GET["page"]) && $_GET["page"]!=''){
+    $page  = $_GET["page"];
+}
+else{
+    $page=1;
+}
+
+$start_from = ($page-1) * $limit;
+
+
+if(isset($_POST['search'])){
+  $searchq = $_POST['search'];
+  $total_records=$db->getVal("SELECT count(id) from ge_partnumbers WHERE part_image !='' AND status='1' AND ge_id='".$getGEData['linkname']."'  AND part_num LIKE '%$searchq%' ");
+  $total_pages = ceil($total_records / $limit);
+  $gePartData = $db->getRows("SELECT * FROM ge_partnumbers WHERE ge_id='".$getGEData['linkname']."' AND part_image !='' AND status='1' AND part_num LIKE '%$searchq%' ORDER BY id LIMIT " . $start_from . ", " . $limit);
+
+}else{
+  $total_records=$db->getVal("SELECT count(id) from ge_partnumbers WHERE part_image !='' AND status='1' AND ge_id='".$getGEData['linkname']."' ");
+  $total_pages = ceil($total_records / $limit);
+  $gePartData = $db->getRows("SELECT * FROM ge_partnumbers WHERE ge_id='".$getGEData['linkname']."' AND part_image !='' AND status='1' ORDER BY id LIMIT " . $start_from . ", " . $limit);
+}
+function insertPagination($base_url, $cur_page, $number_of_pages, $prev_next=false) {
+    $ends_count = 1;  //how many items at the ends (before and after [...])
+    $middle_count = 2;  //how many items before and after current page
+    $dots = false;
+    ?>
+    <ul class="pagination">
+    <?php
+    if ($cur_page != 1) {  //print previous button?
+      ?><li class="prev"><a href="<?php echo $base_url; ?>?page=1">First </a></li><?php
+    }
+    if ($prev_next && $cur_page && 1 < $cur_page) {  //print previous button?
+         ?><li class="prev"><a href="<?php echo $base_url; ?>?page=<?php echo $cur_page-1; ?>">Previous </a></li><?php
+    }
+    for ($i = 1; $i <= $number_of_pages; $i++) {
+         if ($i == $cur_page) {
+              ?><li class="active"><a><?php echo $i; ?></a></li><?php
+              $dots = true;
+         } else {
+              if ($i <= $ends_count || ($cur_page && $i >= $cur_page - $middle_count && $i <= $cur_page + $middle_count) || $i > $number_of_pages - $ends_count) { 
+                   ?><li><a href="<?php echo $base_url; ?>?page=<?php echo $i; ?>"><?php echo $i; ?></a></li><?php
+                   $dots = true;
+              } elseif ($dots) {
+                   ?><li><a>&hellip;</a></li><?php
+                   $dots = false;
+              }
+         }
+    }
+    if ($prev_next && $cur_page && ($cur_page < $number_of_pages || -1 == $number_of_pages)) { //print next button?
+         ?><li class="next"><a href="<?php echo $base_url; ?>?page=<?php echo $cur_page+1; ?>">Next</a></li><?php
+    }
+    if ($cur_page < $number_of_pages ) {  //print previous button?
+      ?><li class="prev"><a href="<?php echo $base_url; ?>?page=<?php echo $number_of_pages; ?>">Last </a></li><?php
+    }
+    ?>
+    </ul>
+    <?php }
+?>
+<!DOCTYPE html>
+<html lang="en">
+<?php include_once('meta.php'); ?>
+
+<link rel='stylesheet' href='https://cdn.datatables.net/1.10.12/css/dataTables.bootstrap.min.css'>
+<script>
+  window.console = window.console || function(t) {};
+</script>
+<style>
+	.viewmore{
+    background: #DDF0F9;
+	}
+  .lasttabmobileshow{
+    display:none;
+  }
+  .table td, .table th {
+    padding: 0.75rem;
+    border-top: 1px solid #dee2e6;
+    vertical-align: middle;
+}
+.image{
+  text-align: center;
+}
+	.table.dataTable thead .sorting:after{
+		display:none;
+	}
+thead th {
+    border-bottom-width: 0px;
+}
+.table thead th {
+    vertical-align: bottom;
+    border-bottom: 0px solid #dee2e6;
+    background: #0b3480;
+    color: white;
+    text-align: center;
+    font-weight: 500;
+}
+.table-bordered {
+    border: 1px solid #0e0e0e;
+}
+.table-bordered td, .table-bordered th {
+    border: 1px solid #000;
+}
+.pagination {
+    display: inline-block;
+    margin: 0px 0;
+    border-radius: 4px;
+    float: right;
+}
+.pagination .page-link {
+    margin: 0px;
+    color: #007BFF;
+}
+.pagination>li {
+    display: inline;
+}
+.pagination>li:first-child>a, .pagination>li:first-child>span {
+    margin-left: 0;
+    border-top-left-radius: 4px;
+    border-bottom-left-radius: 4px;
+}
+.pagination>.disabled>a, .pagination>.disabled>a:focus, .pagination>.disabled>a:hover, .pagination>.disabled>span, .pagination>.disabled>span:focus, .pagination>.disabled>span:hover {
+    color: #777;
+    cursor: not-allowed;
+    background-color: #fff;
+    border-color: #ddd;
+}
+.showinglistnumerpage{
+  text-align: center;
+    padding-top: 7px;
+    font-size: 14px;
+    font-weight: 500;
+}
+.pagination>li>a, .pagination>li>span {
+    position: relative;
+    float: left;
+    padding: 6px 12px;
+    margin-left: -1px;
+    line-height: 1.42857143;
+    color: #337ab7;
+    text-decoration: none;
+    background-color: #fff;
+    border: 1px solid #ddd;
+}
+.pagination>.active>a, .pagination>.active>a:focus, .pagination>.active>a:hover, .pagination>.active>span, .pagination>.active>span:focus, .pagination>.active>span:hover {
+    z-index: 3;
+    color: #fff;
+    cursor: default;
+    background-color: #337ab7;
+    border-color: #337ab7;
+}
+	.nevada-turbine-control {
+    background-image: url(https://unisysgroup.ae//staging/images/turbine-controls/ge-markivbannertop.png);
+    background-size: cover;
+    height: 292px;
+    background-position: top;
+    position: relative;
+}
+.form-inline {
+    display: -ms-flexbox;
+    display: block;
+    -ms-flex-flow: row wrap;
+    flex-flow: row wrap;
+    -ms-flex-align: center;
+    align-items: center;
+}
+.sec-title h3 {
+    color: #4C4C4C;
+    text-transform: uppercase;
+}
+.toprighticonsearch{
+	position: absolute;
+    padding-left: 10px;
+    padding-top: 12px;
+    z-index: 10;
+}
+.serachplaceholdertext{
+	padding-left: 34px;
+}
+.input-group {
+    display: block;
+}
+.form-control {
+  display: block;
+    width: 100%;
+    height: calc(1.6em + 0.75rem + 2px);
+    padding: 0.475rem 1.75rem;
+    font-size: 15px;
+    font-weight: 400;
+    line-height: 1.6;
+    color: #000;
+    background-color: #fff;
+    background-clip: padding-box;
+    border: 1px solid #000;
+    border-radius: 0.35rem;
+    transition: border-color .15s ease-in-out,box-shadow .15s;
+    border-bottom-right-radius: 0px;
+    border-top-right-radius: 0px;
+}
+.sec-title h3 {
+    padding-top: 5px;
+}
+.input-group-text {
+    display: -ms-flexbox;
+    display: flex;
+    -ms-flex-align: center;
+    align-items: center;
+    padding: 0.375rem 0.75rem;
+    margin-bottom: 0;
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.5;
+    color: #ffffff;
+    text-align: center;
+    white-space: nowrap;
+    background-color: #0B3480;
+     border: 1px solid #0B3480; 
+    border-radius: 0.35rem;
+	cursor: pointer;
+  border-bottom-left-radius: 0px;
+    border-top-left-radius: 0px;
+}
+.dataTables_filter {
+  float: right;
+}
+
+.table-hover > tbody > tr:hover {
+    background-color: lighten(cyan, 40%);
+}
+thead {
+  background: #ddd;
+}
+
+.table td:nth-child(2) {
+  overflow: hidden;
+  //white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.highlight {
+  background: lighten(yellow,30%);
+}
+select {
+    word-wrap: normal;
+    padding: 7px;
+    border: 1px solid #CFCFCF;
+    border-radius: 5px;
+}
+.btn.btn-tertiary {
+    color: #007BFF;
+    width: 120px;
+}
+.btn.btn-round {
+    border-radius: 5px;
+}
+.btn {
+    padding: 12px 16px;
+    cursor: pointer;
+    border-width: 1px;
+    border-radius: 5px;
+    font-size: 14px;
+    font-weight: 500;
+    overflow: hidden;
+    position: relative;
+    -moz-transition: all 0.3s ease;
+    -o-transition: all 0.3s ease;
+    -webkit-transition: all 0.3s ease;
+    -ms-transition: all 0.3s ease;
+    transition: all 0.3s ease;
+}
+.btn .icon.icon-round {
+    border-radius: 50%;
+}
+
+.btn .icon {
+	position: absolute;
+    top: 11px;
+    right: 3px;
+    width: 25px;
+    height: 25px;
+    bottom: 0;
+    background: #fff;
+}
+.align-items-center {
+    -webkit-box-align: center !important;
+    -ms-flex-align: center !important;
+    align-items: center !important;
+}
+.justify-content-center {
+    -webkit-box-pack: center !important;
+    -ms-flex-pack: center !important;
+    justify-content: center !important;
+}
+.btn span {
+    margin-left: -20px;
+    -moz-transition: all 0.3s ease;
+    -o-transition: all 0.3s ease;
+    -webkit-transition: all 0.3s ease;
+    -ms-transition: all 0.3s ease;
+    transition: all 0.3s ease;
+}
+.lnr-chevron-right:before {
+    content: "\e876";
+    color: #007BFF;
+    text-align: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 600;
+}
+.btn.btn-tertiary:hover, .btn.btn-tertiary:focus {
+	border-color: #ddf0f9 !important;
+    background: #ddf0f9 !important;
+}
+.form-control:focus {
+    color: #495057;
+    background-color: #fff;
+    border-color: #80bdff;
+    outline: 0;
+    box-shadow: 0 0 0 0rem rgba(0,123,255,.25);
+    border: 1px solid #000;
+}
+@media only screen and (max-width: 767px) {
+  .lasttabmobileshow{
+    display:block !important;
+  }
+  thead tr, tfoot tr {
+    position: relative !important;
+    display: flex;
+    top: 0px !important;
+    left: 0px !important;
+}
+.image {
+    text-align: center;
+    width: 33.33%;
+}
+    
+.viewmore {
+    width: 33.33%;
+    padding-top: 7% !important;
+}
+.partnumbertext {
+    text-align: center;
+    font-size: 12px !important;
+    font-weight: 600;
+    color: #000;
+    width: 33.33%;
+    padding-top: 11.3% !important;
+}
+.btn .icon {
+    position: absolute;
+    top: 10px;
+    right: 5px!important;
+    width: 25px;
+    height: 25px;
+    bottom: 0;
+    background: #fff;
+}
+.sec-mar {
+    margin-bottom: 2em;
+    margin-top: 0.8em;
+}
+.mb-3, .my-3 {
+    margin-bottom: 1.2rem!important;
+}
+  /* Force table to not be like tables anymore */
+  table,
+  thead,
+  tbody,
+  th,
+  td,
+  tr {
+    display: block;
+  }
+  /* Hide table headers (but not display: none;, for accessibility) */
+  thead tr,
+  tfoot tr {
+    position: absolute;
+    top: -9999px;
+    left: -9999px;
+  }
+  td {
+    /* Behave  like a "row" */
+    border: none;
+    border-bottom: 1px solid #eee;
+    position: relative;
+   
+  }
+  td:before {
+    /* Now like a table header */
+    position: absolute;
+    left: 6px;
+    /* width: 45%; */
+    padding-right: 10px;
+    white-space: nowrap;
+  }
+  .desccriptiontextbox {
+    width: 100%!important;
+    font-size: 14px;
+    display:none;
+}
+.viewmore {
+     padding-right: 0px !important;
+    padding-left: 0px !important;
+    background: #DDF0F9;
+    text-align: center;
+    font-size: 16px;
+  
+}
+  .table td:nth-child(1) {
+      background: #0b3480;
+      height: 100%;
+      top: 0;
+      left: 0;
+      font-weight: bold;
+  }
+  .serionnotext {
+    color: #fff !important;
+    text-align: left!important;
+    display:none;
+}
+  /*
+	Label the data
+	*/
+  td:nth-of-type(1):before {
+    content: "S.NO.	";
+  }
+  /* td:nth-of-type(2):before {
+    content: "IMAGE";
+  } */
+  td:nth-of-type(3):before {
+    /* content: "PART NUMBER	"; */
+    color: #4c4c4c;
+  }
+  /* td:nth-of-type(4):before {
+    content: "DESCRIPTION	";
+  } */
+}
+
+
+.part{
+  padding-bottom: 10px;
+}
+.table-bordered {
+    border: 0px solid #0e0e0e !important;
+}
+.desccriptiontextbox{
+	width: 60%;
+    font-size: 14px;
+}
+.serionnotext{
+	text-align: center;
+    font-size: 15px;
+    font-weight: 600;
+    color: #000;
+}
+.partnumbertext{
+	text-align: center;
+    font-size: 15px;
+    font-weight: 600;
+    color: #000;
+}
+@media only screen and (max-width: 767px){
+.page-title {
+	padding: 20px;
+}
+.part {
+    padding-bottom: 0px !important;
+    display: flex;
+}
+.serialnumbertext{
+  padding-left:3em
+}
+.productidtext{
+  padding-left:0em
+}
+.nevada-sec1{
+  padding: 0px;
+}
+.nevada-turbine-control {
+    height: 100px;
+}
+.sec-title {
+    margin-bottom: 0em;
+}
+.sec-title h3 {
+    color: #4C4C4C;
+    text-transform: uppercase;
+    text-align: center;
+    padding-bottom: 5px;
+}
+.mb-2, .my-2 {
+    margin-bottom: 0rem!important;
+}
+.btn.btn-tertiary {
+    color: #007BFF;
+    width: 116px;
+    margin: 0 auto;
+}
+.dataTables_length{
+  display:none;
+}
+.showinglistnumerpage{
+  display:none;
+}
+.col-md-4 nav{
+  text-align: center;
+}
+.pagination {
+    float: none !important;
+}
+.mobilehidebox{
+  display:none;
+}
+}
+.page-link.active{
+  background: #0B3480;
+    color: white;
+    border: 1px solid #0B3480;
+}
+#result{
+  margin-top: 38px;
+}
+.list-group-item {
+    position: relative;
+    display: block;
+    padding: 0.75rem 1.25rem;
+    background-color: #fff;
+    border: 1px solid rgb(0 0 0 / 2%);
+}
+	</style>
+<body>
+	<div id="topscroll"></div>
+	<div class="nevada-turbine-control">
+		<?php include_once('header.php'); ?>
+		<div class="container">
+			<div class="page-title">
+			</div>
+		</div>
+	</div>
+	<div class="container-fluid sec-mar">
+		<div class="container nevada-sec1">
+			  <div>
+          <div class="sec-title">
+            <div class="row">
+              <?php  ?>
+              <div class="col-md-8"><h3 class="getturbinetext"><?php echo $getGEData['type_title']; ?></h3></div>
+                <div class="col-md-4"><div class="input-group mb-3">
+                  <form method="post" action=""  enctype="multipart/form-data"  style="position: relative; display: flex;">
+                    <input type="text" class="form-control serachplaceholdertext" onkeyup="changeInput(this.value)" id="search"  name="search" placeholder="Search For A Part Number" aria-label="Recipient's username">
+                    <i class="fa fa-search toprighticonsearch"></i>
+                    <button type="submit" style="position: absolute; right: -8px; top: 0; border: none; background: none; margin-top: -0.2%; margin-left: -5px;">
+                      <div class="input-group-append">
+                        <span class="input-group-text">Search</span>
+                      </div>
+                    </button>
+                    <div id="result" class="list-group" style="position: absolute; left: 0; right: 0; background-color: #fff; z-index: 1000;"></div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="wrapper">
+              <table id="example2" class="table table-bordered table-hover table-el">
+            <!-- <table class="table getable table-bordered table-hover" id="getable" cellspacing="0" width="100%"> -->
+                <thead>
+                    <tr>
+                        <!-- <th class="col-md-2 mobilehidebox">S.NO.</th> -->
+                        <th class="col-md-2">IMAGE</th>
+                        <th class="col-md-2">PART NUMBER</th>
+                        <th class="col-md-2 mobilehidebox" colspan="2">DESCRIPTION</th>
+                        <th class="col-md-2 lasttabmobileshow"></th>
+                        <!-- <th class="col-md-2">Start date</th> -->
+                      
+                    </tr>
+                </thead>
+                <tbody>
+                  <?php 
+                    foreach($gePartData as $key => $data){
+                  ?>
+                    <tr class="part">
+                        <!-- <td class="serionnotext"><span class="serialnumbertext"><?php echo $key+1; ?></span></td> -->
+                        <td class="image"><img src="https://unisysgroup.ae/uploads/partnumber/<?php echo $data['part_image']; ?>" class="img-fluid mobileimagescenterproduct"></div></td>
+                        <td class="partnumbertext"><span class="productidtext"><?php echo $data['part_num']; ?></span></td>
+                        <td class="desccriptiontextbox"><?php echo $data['content']; ?></td>
+                        <td class="viewmore">
+                          <a href="product_details?id=<?php echo $data['linkname']; ?>">
+                          <button type="button" class="btn mb-2 mb-md-0 btn-tertiary btn-block btn-round"><span>View More</span>
+                            <div class="icon icon-round d-flex align-items-center justify-content-center">
+                              <span class="lnr lnr-chevron-right" style="margin: 0px;"></span>
+                            </div>
+                          </button>
+                        </a>
+                      </td>
+                    </tr>
+                    <?php } ?>
+                    
+                </tbody>
+            </table>
+          </div>
+         <?php 
+
+    // $total_records $start_from . ", " . $limit
+
+    ?> 
+          <div class="row">
+            <div class="col-md-4">
+              <div class="dataTables_length" id="example_length">
+                <label>Show 
+                <select name="example_length" id="entriesPerPage" aria-controls="example" class="form-select form-select-sm">
+                    <option value="5" <?php if($_REQUEST['entries']==5){ echo 'selected'; } ?>>5</option>
+                    <option value="10" <?php if($_REQUEST['entries']==10){ echo 'selected'; } ?>>10</option>
+                    <option value="50" <?php if($_REQUEST['entries']==50){ echo 'selected'; } ?> >50</option>
+                    <option value="100" <?php if($_REQUEST['entries']==100){ echo 'selected'; } ?>>100</option>
+                </select>
+
+                entries</label>
+              </div>
+            </div>
+            <div class="col-md-4 showinglistnumerpage"></div>
+            <div class="col-md-4">
+            <?php
+                if($total_pages>=$page){
+            ?>
+                <nav aria-label="Page navigation example" style="text-align:center;">
+                    <?php echo insertPagination("https://unisysgroup.ae/staging/ge-mark-vi",$page,$total_pages,true); ?>
+                </nav>
+            <?php
+                }
+            ?>
+              <!-- <nav aria-label="Page navigation example">
+                <ul class="pagination justify-content-center">
+                  <li class="page-item disabled">
+                    <a class="page-link" href="#" tabindex="-1">First</a>
+                  </li>
+                  <li class="page-item disabled">
+                    <a class="page-link" href="#" tabindex="-1">Previous</a>
+                  </li>
+                  <li class="page-item"><a class="page-link active" href="#">1</a></li>
+                  <li class="page-item"><a class="page-link" href="#">2</a></li>
+                  <li class="page-item"><a class="page-link" href="#">3</a></li>
+                  <li class="page-item">
+                    <a class="page-link" href="#">Next</a>
+                  </li>
+                  <li class="page-item">
+                    <a class="page-link" href="#">Last</a>
+                  </li>
+                </ul>
+              </nav> -->
+            </div>
+          </div>
+        </div>
+		</div>
+	</div>
+	
+	<?php include_once('footer.php'); ?>
+  <script>
+    // Assuming you have jQuery included
+    $(document).ready(function() {
+        // Get the current selected value
+        var currentEntriesPerPage = $('#entriesPerPage').val();
+
+        // Assuming $start_from is defined elsewhere in your PHP code
+        var start_from = <?php echo $start_from+1; ?>;
+
+        // Set the initial value in the "Showing" section
+        $('.showinglistnumerpage').html('Showing ' + start_from + ' to ' + currentEntriesPerPage + ' of ' + <?php echo $total_records; ?> + ' entries');
+
+        // On change event for the dropdown
+        $('#entriesPerPage').change(function() {
+            // Get the new selected value
+            var newEntriesPerPage = $(this).val();
+
+            // Reload the page with the new value as a parameter
+            window.location.href = 'ge-mark-vi?page=' + <?php echo $page; ?> + '&entries=' + newEntriesPerPage;
+        });
+    });
+</script>
+
+<script>
+var partnumbers = []; // Declare partnumbers globally
+function fetchDynamicValues(callback) {
+    $.ajax({
+        url: 'ajax.php',
+        method: 'GET',
+        data: { action: 'part_values' },
+        success: function(response) {
+            try {
+                var dynamicValues = JSON.parse(response);
+                callback(dynamicValues);
+            } catch (error) {
+                console.error('Failed to parse JSON:', error);
+            }
+        },
+        error: function() {
+            console.error('Failed to fetch dynamic values');
+        }
+    });
+}
+
+function initDynamicValues() {
+    fetchDynamicValues(function(dynamicValues) {
+        partnumbers = dynamicValues;
+        console.log('Dynamic Values:', partnumbers);
+    });
+}
+
+
+initDynamicValues();
+
+function matchPart(input) {
+    var reg = new RegExp(input.split("").join("\\w*").replace(/\W/, ""), "i");
+    var res = [];
+    if (input.trim().length === 0) {
+        return res;
+    }
+    for (var i = 0, len = partnumbers.length; i < len; i++) {
+        if (typeof partnumbers[i] === 'string' && partnumbers[i].match(reg)) {
+            res.push(partnumbers[i]);
+        }
+    }
+    return res;
+}
+
+
+function changeInput(val) {
+    var autoCompleteResult = matchPart(val);
+    var resultBox = document.getElementById("result");
+    resultBox.innerHTML = "";
+    if (autoCompleteResult.length > 0) {
+        resultBox.style.display = "block";
+        for (var i = 0, limit = 10, len = autoCompleteResult.length; i < len  && i < limit; i++) {
+            resultBox.innerHTML += "<a class='list-group-item list-group-item-action' href='#' onclick='setSearch(\"" + autoCompleteResult[i] + "\")'>" + autoCompleteResult[i] + "</a>";
+        }
+    } else {
+        resultBox.style.display = "none";
+    }
+}
+
+function setSearch(value) {
+    document.getElementById('search').value = value;
+    document.getElementById("result").style.display = "none";
+}
+</script>
+</body>
+
+</html>
