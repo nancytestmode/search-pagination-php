@@ -1,0 +1,1034 @@
+<?php
+
+include_once '../config.php';
+$pagename = 'Manage Part Number';
+include_once "inc/meta.php";
+
+$_SESSION[LOGIN_ADMIN]['url_to_return'] = curPageURL();
+
+if(!isset($_SESSION[LOGIN_ADMIN]['admin_username']) && $_SESSION[LOGIN_ADMIN]['admin_username'] == '')
+{
+    redirect(URL_ADMIN."login.php");
+}
+
+$validate=new Validation();
+$stat=array();
+if(isset($_GET['action']) && trim($_GET['action'])!='')
+$pgAct=strtolower($_GET['action']);
+
+if($_SESSION['success']!="" || $_SESSION['error']!="" || $_SESSION['info']!="")
+{
+    $stat['success'] = $_SESSION['success'];
+    unset($_SESSION['success']);
+    $stat['error'] = $_SESSION['error'];
+    unset($_SESSION['error']);
+    $stat['info'] = $_SESSION['info'];
+    unset($_SESSION['info']);
+}
+
+// Bulk Image Upload
+if (isset($_POST['uploadImagesSubmit'])) {
+    if(isset($_FILES["uploadImages"]["name"]) && $_FILES["uploadImages"]["name"]!='')
+    {
+        $filename = basename($_FILES['uploadImages']['name']);
+        $ext = strtolower(substr($filename, strrpos($filename, '.')+1));
+        if(!in_array($ext,array('webp', 'svg')))
+        {
+            $stat['error'] = 'only webp and svg are allowed';
+        }
+    }
+
+    for ($i = 0; $i < count($_FILES['uploadImages']['name']); $i++) 
+    {
+        if (isset($_FILES["uploadImages"]["name"][$i]) && $_FILES["uploadImages"]["name"][$i] != '')
+        {
+            $filename = basename($_FILES['uploadImages']['name'][$i]);
+            $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+
+            if (in_array($ext, array('webp', 'svg'))) 
+            {
+                // $newfile = md5(microtime()) . "." . $ext;
+
+                if (move_uploaded_file($_FILES['uploadImages']['tmp_name'][$i], "../uploads/bulkpartImages/" . $filename)) 
+                {
+                    copy("../staging/uploads/ge_turbine_control/" . $filename, "../staging/uploads/bulkpartImages/" . $filename);
+                    $uploadImages = $db->getVal("SELECT img_name FROM images WHERE id = '" . $_REQUEST['id'] . "'");
+                    @unlink("../uploads/bulkpartImages/" . $uploadImages);
+                    $data1['img_name'] = $filename;
+                } 
+            }
+        }
+
+        $Flgin = $db->insertAry("images", $data1);
+    }
+
+    $_SESSION['success'] = "Images Uploaded Successfully.";
+        redirect("manage_partnumbers.php");
+        exit;
+}
+
+
+// to upload data via CSV Excel
+if (isset($_POST['uploadpartnumbers'])) {
+ 
+    $fileMimes = array(
+        'text/x-comma-separated-values',
+        'text/comma-separated-values',
+        'application/octet-stream',
+        'application/vnd.ms-excel',
+        'application/x-csv',
+        'text/x-csv',
+        'text/csv',
+        'application/csv',
+        'application/excel',
+        'application/vnd.msexcel',
+        'text/plain',
+        'text/xls',
+        'text/xlsx'
+    );
+   
+    if (!empty($_FILES['file']['name']) && in_array($_FILES['file']['type'], $fileMimes)) {
+        $csvFile = fopen($_FILES['file']['tmp_name'], 'r');
+        fgetcsv($csvFile);
+ 
+        while (($getData = fgetcsv($csvFile, 10000, ",")) !== FALSE) {
+          
+            $gelink = $db->getVal("SELECT id FROM ge_listing WHERE lower(type_title) = '".strtolower(trim($getData[0]))."'");
+            
+            $ge_id               = $gelink;
+            $part_num            = $getData[1];
+            $getlinkname         = seo_url(escape(trim($part_num)));
+            $linkname            = $getlinkname; 
+            $product_name        = $getData[2];
+            $star_rating         = $getData[3];
+            $content             = $getData[4];  
+            $part_image          = $getData[5]; 
+            $meta_title          = $getData[6];  
+            $meta_key            = $getData[7];  
+            $meta_desc           = $getData[8]; 
+            // $specification       = $getData[9];  
+            $functional_desc     = $getData[10];  
+            $compatibility       = $getData[11];  
+            $installation        = $getData[12];  
+            $operation           = $getData[13]; 
+            $status              = $getData[14];  
+
+            $data = array(
+                'ge_id'               =>  $ge_id,
+                'part_num'            =>  $part_num,
+                'linkname'            =>  strtolower($linkname),
+                'product_name'        =>  $product_name,
+                'star_rating'         =>  $star_rating,
+                'content'             =>  stripslashes($content),
+                'part_image'          =>  $part_image,
+                'meta_title'          =>  $meta_title,
+                'meta_key'            =>  $meta_key,
+                'meta_desc'           =>  $meta_desc,
+                // 'specification'       =>  $specification,
+                'functional_desc'     =>  $functional_desc,
+                'compatibility'       =>  $compatibility,
+                'installation'        =>  $installation,
+                'operation'           =>  $operation,
+                'status'              =>  $status,
+            );
+          
+            // Check if part number already exists
+            $existingRecord = $db->getVal("SELECT id FROM ge_partnumbers WHERE part_num = '" . escape($part_num) . "'");
+           
+            if ($existingRecord) {
+                $id = $db->updateAry("ge_partnumbers", $data, "WHERE part_num = '" . escape($part_num) . "'");
+                $id = $existingRecord;
+            }else{
+                $id = $db->insertAry("ge_partnumbers", $data);  
+            }
+           
+             
+            $get = explode(';', $getData[9]);
+      
+            $del = $db->delete("partnumber_specification", "where partnumber_id='" . $id . "'");
+
+            foreach ($get as $key => $val) {
+                // Explode each pair into title and value
+                $pair = explode(':', $val); 
+                // Check if the pair is valid (contains title and value)
+                if (count($pair) == 2) {
+                    $title = trim($pair[0]);
+                    $value = trim($pair[1]);
+   
+                    // Insert the pair into the database
+                    $valueData = array(
+                        'partnumber_id' => $id,
+                        'title'         => $title,
+                        'value'         => $value,
+                        'status'        => 1,
+                    );
+
+                    $insertVal = $db->insertAry('partnumber_specification', $valueData);  
+                }
+            }
+
+        }
+
+        fclose($csvFile);
+        $_SESSION['success'] = "File Uploaded Successfully.";
+        redirect("manage_partnumbers.php");
+        exit;
+    } 
+}
+// to delete Bulk data 
+if(isset($_POST['bulk_delete_submit'])){ 
+    if(!empty($_POST['checked_id'])){ 
+        $idStr = implode(',', $_POST['checked_id']); 
+         
+        $delete = $db->query("DELETE FROM ge_partnumbers WHERE id IN ($idStr)"); 
+         
+        if($delete){ 
+            $statusMsg = 'Selected records have been deleted successfully.'; 
+        }else{ 
+            $statusMsg = 'Some problem occurred, please try again.'; 
+        } 
+    }else{ 
+        $statusMsg = 'Select at least 1 record to delete.'; 
+    } 
+} 
+
+if(isset($_POST['submit']))
+{
+    $validate->addRule(trim($_POST['category']),'',"Category",true);
+    $validate->addRule(trim($_POST['part_num']),'',"Part Number",true);
+    $validate->addRule(trim($_POST['product_name']),'',"Product Name",true);
+
+    if(isset($_FILES["part_image"]["name"]) && $_FILES["part_image"]["name"]!='')
+    {
+        $filename = basename($_FILES['part_image']['name']);
+        $ext = strtolower(substr($filename, strrpos($filename, '.')+1));
+        if(!in_array($ext,array('webp','svg')))
+        {
+            $stat['error'] = 'only webp and svg are allowed';
+        }
+    }
+
+    $validate->addRule(trim($_POST['content']),'',"Content",true);
+    // $validate->addRule(trim($_POST['functional_desc']),'',"Functional Description",true);
+    // $validate->addRule(trim($_POST['compatibility']),'',"Compatibility",true);
+    // $validate->addRule(trim($_POST['installation']),'',"Installation",true);
+    // $validate->addRule(trim($_POST['operation']),'',"Operation",true);
+    $validate->addRule($_POST['status'],'',"Status",true);
+
+    if($validate->validate() && count($stat)==0)
+    {
+        $linkname = seo_url(escape(trim($_POST['part_num'])));
+
+        if($_REQUEST['action'] =="add")
+        {
+            $chkge_partnumbers = $db->getVal("select id from ge_partnumbers where part_num='".trim($_POST['part_num'])."'");    
+            $gelink = $db->getVal("SELECT linkname FROM ge_listing WHERE id = '".$_POST['category']."'");
+
+            if($chkge_partnumbers =='')  
+            { 
+                $strFileName = '';
+
+                if($stat['error']==0)
+                {
+                    $data= array(
+                                'category'           =>  escape(trim($_POST['category'])),
+                                'ge_id'              =>  $gelink,
+                                'part_num'           =>  trim($_POST['part_num']),
+                                'product_name'       =>  escape(trim($_POST['product_name'])),
+                                'linkname'           =>  strtolower($linkname),
+                                'star_rating'         =>  $_POST['star_rating'],
+                                'meta_title'         =>  trim(trim($_POST['meta_title'])),
+                                'meta_key'           =>  trim(trim($_POST['meta_key'])),
+                                'meta_desc'          =>  trim($_POST['meta_desc']),
+                                'content'            =>  stripslashes($_POST['content']),
+                                // 'specification'      =>  $_POST['specification'],
+                                'functional_desc'    =>  $_POST['functional_desc'],
+                                'compatibility'      =>  $_POST['compatibility'],
+                                'installation'       =>  $_POST['installation'],
+                                'operation'          =>  $_POST['operation'],
+                                'status'             =>  $_POST['status'],
+                            );
+
+                    if(isset($_FILES["part_image"]["name"]) && $_FILES["part_image"]["name"]!='')
+                    {
+                        $filename = basename($_FILES['part_image']['name']);   
+                        $ext = strtolower(substr($filename, strrpos($filename, '.')+1)); 
+
+                        if(in_array($ext,array('webp','svg')))
+                        {
+                            // $newfile=md5(microtime()).".".$ext;
+
+                            if(move_uploaded_file($_FILES['part_image']['tmp_name'],"../uploads/partnumber/".$filename))
+                            {
+                                $data['part_image'] = $filename;
+                            }
+                        }
+                    } 
+
+                    $id = $db->insertAry("ge_partnumbers",$data);  
+                    if(!is_null($id))
+                    {
+
+                        $del = $db->delete("partnumber_specification", "where partnumber_id='" . $id . "'");
+         
+                        for ($i = 0; $i < count($_POST['title']); $i++) 
+                        {
+                            $data1 = array(
+                                'partnumber_id'       => $id,
+                                'title'               => $_POST['title'][$i],
+                                'value'               => $_POST['value'][$i],
+                                'status'              => 1,
+                            );
+                        
+                            $Flgin = $db->insertAry("partnumber_specification", $data1);
+                            
+                        }
+
+                        $_SESSION["success"]="Record Added Successfully";
+                        redirect("manage_partnumbers.php");
+                        exit;
+                    }
+                }
+            }
+            else
+            {
+                $stat['error'] = "Part Number Already Exists ";
+            }
+        }
+        elseif($_REQUEST['action']=="edit")
+        {
+            $chkge_partnumbers = $db->getVal("select id from ge_partnumbers where part_num='".trim($_POST['part_num'])."' and id!='".$_REQUEST['id']."'");
+            $gelink = $db->getVal("SELECT linkname FROM ge_listing WHERE id = '".$_POST['category']."'");
+
+            if($chkge_partnumbers =='')
+            {
+                if($stat['error']==0)
+                {
+                    $data= array(
+                                'category'             =>  escape(trim($_POST['category'])),
+                                'ge_id'                =>  $gelink,
+                                'part_num'             =>  escape(trim($_POST['part_num'])),
+                                'product_name'         =>  escape(trim($_POST['product_name'])),
+                                // 'linkname'          =>  strtolower($linkname),
+                                'star_rating'         =>  $_POST['star_rating'],
+                                'meta_title'           =>  trim(trim($_POST['meta_title'])),
+                                'meta_key'             =>  trim(trim($_POST['meta_key'])),
+                                'meta_desc'            =>  trim($_POST['meta_desc']),
+                                'content'              =>  stripslashes($_POST['content']),
+                                // 'specification'        =>  stripslashes($_POST['specification']),
+                                'functional_desc'      =>  $_POST['functional_desc'],
+                                'compatibility'        =>  $_POST['compatibility'],
+                                'installation'         =>  $_POST['installation'],
+                                'operation'            =>  $_POST['operation'],
+                                'status'               =>  $_POST['status'],
+                            );
+
+                    if(isset($_FILES["part_image"]["name"]) && $_FILES["part_image"]["name"]!='')
+                    {
+                        $filename = basename($_FILES['part_image']['name']);
+                        $ext = strtolower(substr($filename, strrpos($filename, '.')+1));
+                        if(in_array($ext,array('webp','svg')))
+                        {
+                            // $newfile=md5(microtime()).".".$ext;
+                            if(move_uploaded_file($_FILES['part_image']['tmp_name'],"../uploads/partnumber/".$filename))
+                            {
+                                $part_image= $db->getVal("SELECT part_image FROM ge_partnumbers WHERE id ='".$_REQUEST['id']."'");
+                                @unlink("../uploads/partnumber/".$part_image);
+                                $data['part_image'] = $filename;
+                            }
+                        }
+                    }
+
+                    $id = $db->updateAry("ge_partnumbers",$data,"where id = '".$_REQUEST['id']."'");
+                  
+                    if(!is_null($id))
+                    {
+                        $del = $db->delete("partnumber_specification", "where partnumber_id='" . $_REQUEST['id'] . "'");
+         
+                        for ($i = 0; $i < count($_POST['title']); $i++) 
+                        {
+                            $data1 = array(
+                                'partnumber_id'       => $_REQUEST['id'],
+                                'title'               => $_POST['title'][$i],
+                                'value'               => $_POST['value'][$i],
+                                'status'              => 1,
+                            );
+
+                            $Flgin = $db->insertAry("partnumber_specification", $data1);
+                            
+                        }
+
+                        $_SESSION["success"]=" Record Updated Successfully";
+                        redirect("manage_partnumbers.php");
+                        exit;
+                    }
+                }
+            }
+            else
+            {
+                $stat['error'] = "Part Number Already Exists ";
+            }
+        }
+    }
+    else
+    {
+        if(count($stat)==0)
+        {
+            $stat["error"]=$validate->errors();
+        }
+    }
+}
+
+if($_GET['action'] =='delete')
+{
+    $part_image= $db->getVal("SELECT part_image FROM ge_partnumbers WHERE id ='".$_REQUEST['id']."'");
+    @unlink("../uploads/partnumber/".$part_image);
+
+    $del=$db->delete("product_specificaitons","where part_id='".$_GET['id']."'");
+    $del=$db->delete("ge_partnumbers","where id='".$_GET['id']."'");
+
+    if(!is_null($del))
+    {
+        echo $db->getErMsg();
+        $_SESSION["success"] =" Record Deleted Successfully";
+        redirect("manage_partnumbers.php");
+    }
+    else
+    {
+        echo $db->getErMsg();
+        $_SESSION["error"] =" Record Deletion Failed";
+        redirect("manage_partnumbers.php");
+    }
+}
+
+?>
+<style>
+            .custom-file-input.selected:lang(en)::after {
+                content: "" !important;
+            }
+        
+            .custom-file {
+                overflow: hidden;
+            }
+        
+            .custom-file-input {
+                white-space: nowrap;
+            }
+            .del-css{
+            padding: 0.15rem 0.5rem;
+            font-size: 0.95rem;
+            line-height: 2;
+            border-radius: 0.15rem;
+            margin-bottom: 1rem;
+            }
+        </style>
+            <!-- <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"> -->
+<body class="hold-transition sidebar-mini layout-fixed">
+
+<div class="wrapper">
+  <?php include_once "inc/inc.header.php"; ?>
+  <?php include_once "inc/inc.sidebar.php"; ?>
+
+  <div class="content-wrapper">
+    <section class="content-header">
+      <div class="container-fluid">
+        <div class="row mb-2">
+          <div class="col-sm-6">
+            <h1></h1>
+          </div>
+        </div>
+      </div>
+    </section>
+    <!-- Main content -->
+
+    <section class="content">
+      <div class="row">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">
+                    <h2 style="display:inline;margin-bottom:-1.5rem!important;"> 
+                      <?php
+                        if($_REQUEST['action'] =='edit' ) { echo "Edit Part Number"; }
+                        else if( $_REQUEST['action'] =='add') { echo "Add Part Number"; }
+                        else if($_REQUEST['action'] =='view') { echo "View Part Number"; }
+                        else { echo $pagename; };
+                      ?>
+                    </h2>
+              </h3>
+              <?php if (!isset($_GET['action'])): ?>
+                <!-- <div class="input-group-append"> -->
+               
+                   
+                <div class="container-fluid" style="margin-top:1rem!important;">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <form action="" method="post" enctype="multipart/form-data">
+                            
+                                    <div class="input-group">
+                                        <div class="custom-file">
+                                            <input type="file" class="custom-file-input" id="customFileInput" name="file" value="file">
+                                            <label class="custom-file-label" for="customFileInput">Select File </label>
+                                        </div>
+                                        <div class="input-group-append">
+                                            <input type="submit" name="uploadpartnumbers" value="Upload CSV" class="btn btn-primary">
+                                        </div>
+                                    </div>
+                            </form>
+                        </div>
+                        <!-- <div class="row"> -->
+                       
+                        <div class="col-md-3">
+                            <form action="" method="post" enctype="multipart/form-data">
+                                <div class="input-group">
+                                    <div class="custom-file">
+                                        <input type="file" class="custom-file-input" id="customFileInput" name="uploadImages[]" multiple>
+                                        <!-- Notice the "[]" in the name attribute to allow multiple file selection -->
+                                        <label class="custom-file-label" for="customFileInput">Multiple Images</label>
+                                    </div>
+                                    <div class="input-group-append">
+                                        <input type="submit" name="uploadImagesSubmit" value="Upload Images" class="btn btn-primary">
+                                    </div>
+                                </div>
+                            </form>
+
+                        </div>
+                        <div class="col-md-2"></div>
+                        <div class="col-md-4 text-right">
+                            <a href="<?php echo URL_ADMIN; ?>manage_partnumbers.php?action=add"  class="btn btn-primary">Add Products</a>
+                        &nbsp;&nbsp;
+                            <a href="" class="btn btn-primary">Export Sample</a>
+                        </div>
+                    </div>
+                </div>
+                <!-- </div> -->
+                <!-- <div class="input-group-append">
+                  
+                </div> -->
+              <?php endif ?>
+            </div>
+
+            <div class="card-body">
+                <?php echo msg($stat);?>
+                <?php
+                  if($_REQUEST['action']=='add' || $_REQUEST['action']=="edit")
+                  {
+                    $blog_user = $db->getRows("select * from ge_partnumbers where status=1 order by id desc");
+                    if($_REQUEST['action']=="edit")
+                    {
+                        $aryForm=$db->getRow("select * from ge_partnumbers where id ='".$_REQUEST['id']."'");
+                        $getSpecificationData = $db->getRows("SELECT * FROM partnumber_specification WHERE partnumber_id='".$aryForm['id']."'"); 
+                    }
+                ?>
+
+                <form id="ge_partnumbers_form" enctype="multipart/form-data" class="form-horizontal form-label-left" method="post">
+                      <div class="card-body">
+                        <div class="form-group row">
+                            <div class="col-md-3 col-sm-3 col-xs-12">
+                              <label for="category" class="control-label float-right">GE Category<span class="required"> *</span></label>
+                            </div>
+                            <div class="col-md-6 col-sm-6 col-xs-12">
+                                <select id="category" class="form-control" name="category">
+                                    <option value="" hidden selected>Select GE Category</option>
+                                    <?php $geTypes = $db->getRows("SELECT * FROM ge_listing "); 
+                                    foreach($geTypes as $key =>$vals){
+                                    ?>
+                                    <option value="<?php echo $vals['id']; ?>" <?php if($vals['id']==$aryForm['category']){ echo 'selected'; } ?>><?php echo $vals['type_title']; ?></option>
+                                    <?php } ?>
+                                    </select>
+                            </div>
+                        </div>
+                        <div class="form-group row">
+                            <div class="col-md-3 col-sm-3 col-xs-12">
+                              <label for="part_num" class="control-label float-right">Part Number<span class="required"> *</span></label>
+                            </div>
+                            <div class="col-md-6 col-sm-6 col-xs-12">
+                                <input type="text" class="form-control" id="part_num" name="part_num" value="<?php if($_REQUEST['action']=='edit'){ echo $aryForm['part_num']; }elseif(isset($_POST)){echo ucfirst($_POST['part_num']); } ?>" placeholder="Part Number">
+                            </div>
+                        </div>
+                        <div class="form-group row">
+                            <div class="col-md-3 col-sm-3 col-xs-12">
+                              <label for="product_name" class="control-label float-right">Product Name<span class="required"> *</span></label>
+                            </div>
+                            <div class="col-md-6 col-sm-6 col-xs-12">
+                                <input type="text" class="form-control" id="product_name" name="product_name" value="<?php if($_REQUEST['action']=='edit'){ echo $aryForm['product_name']; }elseif(isset($_POST)){echo ucfirst($_POST['product_name']); } ?>" placeholder="Product Name">
+                            </div>
+                        </div>
+                        <div class="form-group row">
+                            <div class="col-md-3 col-sm-3 col-xs-12">
+                              <label for="star_rating" class="control-label float-right">Star Rating</label>
+                            </div>
+                            <div class="col-md-6 col-sm-6 col-xs-12">
+                                <input type="text" class="form-control" id="star_rating" name="star_rating" value="<?php if($_REQUEST['action']=='edit'){ echo $aryForm['star_rating']; }elseif(isset($_POST)){echo ucfirst($_POST['star_rating']); } ?>" placeholder="Star Rating">
+                            </div>
+                        </div>
+                        <div class="form-group row">
+                            <div class="col-md-3 col-sm-3 col-xs-12">
+                                <label for="meta_title" class="control-label float-right"> Meta Title</label>
+                            </div>
+                            <div class="col-md-6 col-sm-6 col-xs-12">
+                                <input class="form-control" id="meta_title" name="meta_title" type="meta_title" value="<?php if($_REQUEST['action']=='edit'){ echo $aryForm['meta_title']; }elseif(isset($_POST)){echo $_POST['meta_title']; } ?>" placeholder="Meta Title">
+                            </div>
+                        </div>
+                        <div class="form-group row">
+                            <div class="col-md-3 col-sm-3 col-xs-12">
+                                <label for="meta_key" class="control-label float-right">Meta Keyword</label>
+                            </div>
+                            <div class="col-md-6 col-sm-6 col-xs-12">
+                                <input class="form-control" id="meta_key" name="meta_key" type="meta_key" value="<?php if($_REQUEST['action']=='edit'){ echo $aryForm['meta_key']; }elseif(isset($_POST)){echo $_POST['meta_key']; } ?>" placeholder="Meta Keyword">
+                            </div>
+                        </div>
+                        <div class="form-group row">
+                            <div class="col-md-3 col-sm-3 col-xs-12">
+                                <label for="meta_desc" class="control-label float-right">Meta Description</label>
+                            </div>
+                            <div class="col-md-6 col-sm-6 col-xs-12">
+                                <textarea class="form-control" id="meta_desc" name="meta_desc" type="meta_desc"><?php if($_REQUEST['action']=='edit'){ echo $aryForm['meta_desc']; }elseif(isset($_POST)){echo $_POST['meta_desc']; } ?></textarea>
+                            </div>
+                        </div>
+                        <div class="form-group row">
+                            <div class="col-md-3 col-sm-3 col-xs-12">
+                                <label for="part_image" class="control-label float-right">Image<span class="required">  </span></label>
+                            </div>
+                            <div class="col-md-6 col-sm-6 col-xs-12">
+                                <input class="col-md-7 col-xs-12" id="part_image" name="part_image" type="file">
+                                <br/>
+                                <?php
+                                if($aryForm['part_image'] != '' && file_exists("../uploads/partnumber/".$aryForm['part_image']))
+                                {
+                                    echo '<img src="'.URL_ROOT.'uploads/partnumber/'.$aryForm['part_image'].'" width="50" height="50">';
+                                }
+                                ?>
+                                 <p>Recommended size : 400*400px</p>
+                            </div>
+                        </div>
+                        <div class="form-group row">
+                            <div class="col-md-3 col-sm-3 col-xs-12">
+                                <label for="content" class="control-label float-right">Content<span class="required"> *</span></label>
+                            </div>
+                            <div class="col-md-6 col-sm-6 col-xs-12">
+                                <textarea class="form-control textarea" id="content" name="content" type="content"><?php if($_REQUEST['action']=='edit'){ echo $aryForm['content']; }elseif(isset($_POST)){echo $_POST['content']; } ?></textarea>
+                            </div>
+                        </div>
+                      
+                        <div class="form-group row">
+                            <div class="col-md-3 col-sm-3 col-xs-12">
+                                <label class="control-label float-right" for="slot">Specification</label>
+                            </div>
+                            <div class="col-md-6 col-sm-6 col-xs-12">
+                                <div class="panel panel-primary service-panel">
+                                    <div class="panel-heading">
+                                        <div class="row">
+                                            <div class="col-xs-12 col-md-12 text-right mb-2">
+                                                <button class="btn btn-danger add_field_button1">Add More <i class="fa fa-plus-circle" aria-hidden="true"></i></button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="panel-body">
+                                        <div class="input_fields_wrap1">
+                                    <?php if($getSpecificationData !=''){ ?>
+                                        <?php
+                                        foreach ($getSpecificationData as $keys => $typeData): ?>
+                                            <div class="row colordivappend1" id="colorqt1" style="margin-bottom: 5px;">
+                                                <div class="col-md-5 str_box space">
+                                                    <input type="text" name="title[]" id="title<?php echo $keys+1; ?>" class="form-control col-md-12 col-xs-12 title" placeholder="Enter GE Title" value="<?php if($typeData['title']!=''){ echo $typeData['title']; }elseif(isset($_POST)){echo $_POST['title']; } ?>">
+                                                </div>
+                                                <div class="col-md-5 str_box space">
+                                                    <textarea name="value[]" id="value<?php echo $keys+1; ?>" placeholder="Enter Value" class="form-control col-md-12 col-xs-12 value"><?php if($typeData['value']!=''){ echo $typeData['value']; }elseif(isset($_POST)){echo $_POST['value']; } ?></textarea>
+                                                </div>
+                                                <div class="col-md-2 del_box space">
+                                                    <button type="button" class="btn btn-danger remove_field1 btn-block" title="Delete"><i class="fa fa-trash"></i></button>
+                                                </div>
+                                            </div> 
+                                        <?php endforeach ?>
+
+                                        <?php  }else{ ?>  
+                                            <div class="row colordivappend1" id="colorqt1" style="margin-bottom: 5px;">
+                                                <div class="col-md-5 str_box space">
+                                                    <input type="text" name="title[]" id="title1"  class="form-control col-md-12 col-xs-12 title" placeholder="Enter GE Title" value="<?php if(isset($_POST)){echo $_POST['title']; } ?>">
+                                                </div>
+                                                <div class="col-md-5 str_box space">
+                                                    <textarea name="value[]" id="value1" placeholder="Enter Value"  class="form-control col-md-12 col-xs-12 value" ><?php if(isset($_POST)){echo $_POST['value']; } ?></textarea>
+                                                </div>
+                                                <div class="col-md-2 del_box space">
+                                                    <button type="button" class="btn btn-danger remove_field1 btn-block" title="Delete"><i class="fa fa-trash"></i></button>
+                                                </div>
+                                            </div> 
+                                        <?php } ?>                        
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>  
+                        </div>
+                       
+                        <div class="form-group row">
+                            <div class="col-md-3 col-sm-3 col-xs-12">
+                                <label for="functional_desc" class="control-label float-right">Functional Description</label>
+                            </div>
+                            <div class="col-md-6 col-sm-6 col-xs-12">
+                                  <textarea class="form-control textarea" id="functional_desc" name="functional_desc" type="content"><?php if($_REQUEST['action']=='edit'){ echo $aryForm['functional_desc']; }elseif(isset($_POST)){echo $_POST['functional_desc']; } ?></textarea>
+                            <!-- <input class="form-control" id="functional_desc" name="functional_desc" type="functional_desc" value="<?php if($_REQUEST['action']=='edit'){ echo $aryForm['functional_desc']; }elseif(isset($_POST)){echo $_POST['functional_desc']; } ?>" placeholder="Enter Functional Description"> -->
+                            </div>
+                        </div>
+                        <div class="form-group row">
+                            <div class="col-md-3 col-sm-3 col-xs-12">
+                                <label for="compatibility" class="control-label float-right">Compatibility</label>
+                            </div>
+                            <div class="col-md-6 col-sm-6 col-xs-12">
+                                 <textarea class="form-control textarea" id="compatibility" name="compatibility" type="content"><?php if($_REQUEST['action']=='edit'){ echo $aryForm['compatibility']; }elseif(isset($_POST)){echo $_POST['compatibility']; } ?></textarea>
+                                <!-- <input class="form-control" id="compatibility" name="compatibility" type="compatibility" value="<?php if($_REQUEST['action']=='edit'){ echo $aryForm['compatibility']; }elseif(isset($_POST)){echo $_POST['compatibility']; } ?>" placeholder="Enter Compatibility"> -->
+                            </div>
+                        </div>
+                        <div class="form-group row">
+                            <div class="col-md-3 col-sm-3 col-xs-12">
+                                <label for="installation" class="control-label float-right">Installation</label>
+                            </div>
+                            <div class="col-md-6 col-sm-6 col-xs-12">
+                                 <textarea class="form-control textarea" id="installation" name="installation" type="content"><?php if($_REQUEST['action']=='edit'){ echo $aryForm['installation']; }elseif(isset($_POST)){echo $_POST['installation']; } ?></textarea>
+                                <!-- <input class="form-control" id="installation" name="installation" type="installation" value="<?php if($_REQUEST['action']=='edit'){ echo $aryForm['installation']; }elseif(isset($_POST)){echo $_POST['installation']; } ?>" placeholder="Enter Installation"> -->
+                            </div>
+                        </div>
+                        <div class="form-group row">
+                            <div class="col-md-3 col-sm-3 col-xs-12">
+                                <label for="operation" class="control-label float-right">Operation</label>
+                            </div>
+                            <div class="col-md-6 col-sm-6 col-xs-12">
+                                 <textarea class="form-control textarea" id="operation" name="operation" type="content"><?php if($_REQUEST['action']=='edit'){ echo $aryForm['operation']; }elseif(isset($_POST)){echo $_POST['operation']; } ?></textarea>
+                                <!-- <input class="form-control" id="operation" name="operation" type="operation" value="<?php if($_REQUEST['action']=='edit'){ echo $aryForm['operation']; }elseif(isset($_POST)){echo $_POST['operation']; } ?>" placeholder="Enter Operation"> -->
+                            </div>
+                        </div>
+                        <div class="form-group row">
+                            <div class="col-md-3 col-sm-3 col-xs-12">
+                                <label for="status" class="control-label float-right">Status</label>
+                            </div>
+                            <div class="col-md-6 col-sm-6 col-xs-12">
+                                <select class="form-control" id="status" name="status">
+                                    <option value="" selected hidden>Select status</option>
+                                    <option value="1" <?php if($_REQUEST['action']=='edit'){ if( $aryForm['status']==1){echo 'selected'; }; }elseif(isset($_POST)){if( $_POST['status'] == 1){echo 'selected'; }; } ?>>Active</option>
+                                    <option value="2" <?php if($_REQUEST['action']=='edit'){ if( $aryForm['status']==2){echo 'selected'; }; }elseif(isset($_POST)){if( $_POST['status'] == 2){echo 'selected'; }; } ?>>Inactive</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- /.card-body -->
+                    <div class="card-footer">
+                      <div class="col-md-6 col-sm-6 col-xs-12 offset-3">
+                          <a href="<?php echo href('manage_partnumbers.php'); ?>" class="btn btn-default">
+                              Back
+                          </a>
+                          <button class="btn btn-success" type="submit" name="submit">
+                              Submit
+                          </button>
+                      </div>
+                    </div>
+                    <!-- /.card-footer -->
+                </form>
+            <?php }elseif($_REQUEST['action']=='view' && $_REQUEST['id']!='') {
+                $getcat = $db->getRow("select * from ge_partnumbers where id =".$_REQUEST['id']);
+                $geCategoryVal = $db->getVal("SELECT type_title FROM ge_listing WHERE id='".$getcat['category']."'");
+                $getSpecifications = $db->getRows("SELECT * FROM partnumber_specification WHERE partnumber_id = '".$_REQUEST['id']."'");
+            ?>
+              <form class="form-horizontal form-label-left" method="post">
+                    <div class="card-body">
+                      <div class="form-group row">
+                          <div class="col-md-3 col-sm-3 col-xs-12">
+                              <label for="category" class="control-label float-right">GE Category: </label>
+                          </div>
+                          <div class="col-md-6 col-sm-6 col-xs-12">
+                              <?php echo ucfirst($geCategoryVal); ?>
+                          </div>
+                      </div>
+                      <div class="form-group row">
+                          <div class="col-md-3 col-sm-3 col-xs-12">
+                              <label for="part_num" class="control-label float-right">Part Number: </label>
+                          </div>
+                          <div class="col-md-6 col-sm-6 col-xs-12">
+                              <?php echo ucfirst($getcat['part_num']); ?>
+                          </div>
+                      </div>
+                      <div class="form-group row">
+                          <div class="col-md-3 col-sm-3 col-xs-12">
+                              <label for="product_name" class="control-label float-right">Product Name: </label>
+                          </div>
+                          <div class="col-md-6 col-sm-6 col-xs-12">
+                              <?php echo ucfirst($getcat['product_name']); ?>
+                          </div>
+                      </div>
+                      <div class="form-group row">
+                          <div class="col-md-3 col-sm-3 col-xs-12">
+                              <label for="star_rating" class="control-label float-right">Star Rating: </label>
+                          </div>
+                          <div class="col-md-6 col-sm-6 col-xs-12">
+                              <?php echo ucfirst($getcat['star_rating']); ?>
+                          </div>
+                      </div>
+                      <div class="form-group row">
+                            <div class="col-md-3 col-sm-3 col-xs-12">
+                                <label for="meta_title" class="control-label float-right">Meta Title: </label>
+                            </div>
+                            <div class="col-md-6 col-sm-6 col-xs-12">
+                              <?php echo $getcat['meta_title']; ?>
+                          </div>
+                      </div>
+                      <div class="form-group row">
+                          <div class="col-md-3 col-sm-3 col-xs-12">
+                            <label for="meta_key" class="control-label float-right">Meta Keyword: </label>
+                          </div>
+                          <div class="col-md-6 col-sm-6 col-xs-12">
+                            <?php echo $getcat['meta_key']; ?>
+                          </div>
+                      </div>
+                      <div class="form-group row">
+                        <div class="col-md-3 col-sm-3 col-xs-12">
+                            <label for="meta_desc" class="control-label float-right">Meta Description: </label>
+                        </div>
+                        <div class="col-md-6 col-sm-6 col-xs-12">
+                            <?php echo $getcat['meta_desc']; ?>
+                        </div>
+                      </div>
+                      <div class="form-group row">
+                        <div class="col-md-3 col-sm-3 col-xs-12">
+                            <label for="part_image" class="control-label float-right">Image: </label>
+                        </div>
+                          <div class="col-md-6 col-sm-6 col-xs-12">
+                              <?php
+                                  if($getcat['part_image'] != '' && file_exists("../uploads/partnumber/".$getcat['part_image']))
+                                  {
+                                      echo '<img src="'.URL_ROOT.'uploads/partnumber/'.$getcat['part_image'].'" width="50" height="50">';
+                                  }
+                                  else
+                                  {
+                                    echo 'N/A';
+                                  }
+                              ?>
+                          </div>
+                      </div>
+                      <div class="form-group row">
+                          <div class="col-md-3 col-sm-3 col-xs-12">
+                                <label for="content" class="control-label float-right">Content: </label>
+                          </div>
+                          <div class="col-md-6 col-sm-6 col-xs-12">
+                              <?php echo $getcat['content']; ?>
+                          </div>
+                      </div>
+                      <div class="form-group row">
+                          <div class="col-md-3 col-sm-3 col-xs-12">
+                                <label for="specification" class="control-label float-right">Specification: </label>
+                          </div>
+                          <div class="col-md-6 col-sm-6 col-xs-12">
+                              <!-- <?php echo $getcat['specification']; ?> -->
+                              <?php if($getSpecifications !=''){ ?>
+                                    <?php
+                                    foreach ($getSpecifications as $keys => $typeData): ?>
+                                        <div class="row colordivappend1" id="colorqt1" style="margin-bottom: 5px;">
+                                            <div class="col-md-5 str_box space">
+                                                <?php if($typeData['title']!=''){ echo $typeData['title']; }elseif(isset($_POST)){echo $_POST['title']; } ?>
+                                            </div>
+                                            <div class="col-md-5 str_box space">
+                                                <?php if($typeData['value']!=''){ echo $typeData['value']; }elseif(isset($_POST)){echo $_POST['value']; } ?>
+                                            </div>
+                                            <!-- <div class="col-md-2 del_box space">
+                                                <button type="button" class="btn btn-danger remove_field1 btn-block" title="Delete"><i class="fa fa-trash"></i></button>
+                                            </div> -->
+                                        </div> 
+                                    <?php endforeach ?>
+                                 <?php } ?>
+                          </div>
+                      </div>
+                      <div class="form-group row">
+                            <div class="col-md-3 col-sm-3 col-xs-12">
+                                <label for="functional_desc" class="control-label float-right">Functional Description: </label>
+                            </div>
+                            <div class="col-md-6 col-sm-6 col-xs-12">
+                              <?php echo $getcat['functional_desc']; ?>
+                          </div>
+                      </div>
+                      <div class="form-group row">
+                            <div class="col-md-3 col-sm-3 col-xs-12">
+                                <label for="compatibility" class="control-label float-right">Compatibility: </label>
+                            </div>
+                            <div class="col-md-6 col-sm-6 col-xs-12">
+                              <?php echo $getcat['compatibility']; ?>
+                          </div>
+                      </div>
+                      <div class="form-group row">
+                            <div class="col-md-3 col-sm-3 col-xs-12">
+                                <label for="installation" class="control-label float-right">Installation: </label>
+                            </div>
+                            <div class="col-md-6 col-sm-6 col-xs-12">
+                              <?php echo $getcat['installation']; ?>
+                          </div>
+                      </div>
+                      <div class="form-group row">
+                            <div class="col-md-3 col-sm-3 col-xs-12">
+                                <label for="operation" class="control-label float-right">Operation: </label>
+                            </div>
+                            <div class="col-md-6 col-sm-6 col-xs-12">
+                              <?php echo $getcat['operation']; ?>
+                          </div>
+                      </div>
+                      <div class="form-group row">
+                          <div class="col-md-3 col-sm-3 col-xs-12">
+                              <label for="status" class="control-label float-right">Status: </label>
+                          </div>    
+                          <div class="col-md-6 col-sm-6 col-xs-12">
+                              <?php if($getcat['status'] == 1){echo '<label class="badge badge-success">Active</label>';}elseif($getcat['status'] == 2){echo '<label class="badge badge-danger">Inactive</label>';} ?>
+                          </div>
+                      </div>
+                  </div>
+                  <!-- /.card-body -->
+                  <div class="card-footer">
+                    <div class="col-md-6 col-sm-6 col-xs-12 offset-3">
+                        <a href="<?php echo href('manage_partnumbers.php'); ?>" class="btn btn-default">
+                            Back
+                        </a>
+                        <a href="<?php echo URL_ADMIN.'manage_partnumbers.php?action=edit&id='.$getcat['id'] ?>" class="btn btn-primary">
+                          Edit
+                        </a>
+                    </div>
+                  </div>
+                  <!-- /.card-footer -->
+              </form>
+            <?php }else{
+                $ge_partnumbers = $db->getRows("select * from ge_partnumbers order by id desc");
+              
+            ?>
+            <form name="bulk_action_form" action="" method="post" onSubmit="return delete_confirm();">
+              <input type="submit" class="btn btn-danger del-css" name="bulk_delete_submit" value="Delete"/>
+              <table class="table table-bordered table-hover new-table">
+                <thead>
+                    <tr>   
+                        <th><input type="checkbox" id="select_all" value=""/></th>  
+                        <th>S.No</th>
+                        <th>GE Category</th>
+                        <th>Part Number</th>
+                        <th>Meta Title</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($ge_partnumbers as $key => $post): 
+                      $geCategoryVal = $db->getRow("SELECT type_title FROM ge_listing WHERE id='".$post['category']."'");?>
+                  <tr>
+                      <td><input type="checkbox" name="checked_id[]" class="checkbox" value="<?php echo $post['id']; ?>"/></td>    
+                      <td width="5%"><?php echo $key+1; ?></td>
+                      <td><?php echo $geCategoryVal['type_title']; ?></td>
+                      <td><?php echo ucfirst($post['part_num']); ?></td>
+                      <td><?php echo ($post['meta_title']); ?></td>
+                      <td><?php if($post['status'] == 1){echo '<label class="badge badge-success">Active</label>';}elseif($post['status'] == 2){echo '<label class="badge badge-danger">Inactive</label>';} ?></td>
+                      <td>
+                      <a class="btn btn-primary btn-xs" href="<?php echo URL_ADMIN.'manage_partnumbers.php?action=view&id='.$post['id'] ?>"><i class="fas fa-eye"></i> View</a>
+                          <a class="btn btn-info btn-xs" href="<?php echo URL_ADMIN.'manage_partnumbers.php?action=edit&id='.$post['id'] ?>"><i class="fas fa-edit"></i> Edit</a>
+                          <a class="btn btn-danger btn-xs" onclick="return confirm('Are you sure! you want to delete this?')" href="<?php echo URL_ADMIN.'manage_partnumbers?action=delete&id='.$post['id'] ?>"><i class="fas fa-trash"></i> Delete</a>
+
+                      </td>
+                  </tr>
+                <?php endforeach ?>
+                </tbody>
+              </table>
+                </form>
+              <?php } ?>
+            </div>
+            <!-- /.card-body -->
+          </div>
+          <!-- /.card -->
+        </div>
+        <!-- /.col -->
+      </div>
+      <!-- /.row -->
+    </section>
+    <!-- /.content -->
+  </div>
+  <!-- /.content-wrapper -->
+  <?php include_once "inc/inc.footer.php"; ?>
+  <script>
+      $("form#ge_partnumbers_form").parsley();
+      $(function () {
+    $('.new-table').DataTable({
+      "paging": true,
+      "lengthChange": true,
+      "searching": true,
+      "ordering": true,
+      "info": true,
+      "autoWidth": true,
+    });
+  });
+  </script>
+
+
+<script type="text/javascript">
+    var max_fields1 = 50; // maximum input boxes allowed
+    var wrapper1 = $(".input_fields_wrap1"); // Fields wrapper
+    var add_button1 = $(".add_field_button1"); // Add button ID
+    var y = 1; // initial text box count
+
+    $(add_button1).click(function (e) { // on add input button click
+        e.preventDefault();
+        if (y < max_fields1) { // max input box allowed
+            y++; // text box increment
+            if ($('#colorqt1').length) {
+
+                var clone1 = $('#colorqt1').clone();
+                clone1.find("input").val("");
+                clone1.find("input[type='text'], textarea").val(""); // Clear text and textarea values
+                clone1.appendTo($(wrapper1)).find(".title").attr("id", "title" + $(".colordivappend1").length).end().find(".value").attr("id", "value" + $(".colordivappend1").length);
+
+                var leny = $(".colordivappend1").length;
+
+            }
+        }
+    });
+
+    // on delete multiple fields
+    $(wrapper1).on("click", ".remove_field1", function (e) { // user click on remove text
+        if ($(".remove_field1").length == 1) {
+            alert("Sorry at least 1 payment mode is required");
+            return false;
+        }
+        e.preventDefault();
+        $(this).closest('div.colordivappend1').remove();
+        y--;
+    });
+</script>
+
+  <script>
+    $(document).ready(function(){
+    $('#select_all').on('click',function(){
+        if(this.checked){
+            $('.checkbox').each(function(){
+                this.checked = true;
+            });
+        }else{
+             $('.checkbox').each(function(){
+                this.checked = false;
+            });
+        }
+    });
+	
+    $('.checkbox').on('click',function(){
+        if($('.checkbox:checked').length == $('.checkbox').length){
+            $('#select_all').prop('checked',true);
+        }else{
+            $('#select_all').prop('checked',false);
+        }
+    });
+});
+function delete_confirm(){
+    if($('.checkbox:checked').length > 0){
+        var result = confirm("Are you sure to delete selected records?");
+        if(result){
+            return true;
+        }else{
+            return false;
+        }
+    }else{
+        alert('Select at least 1 record to delete.');
+        return false;
+    }
+}
+    </script>
+  </body>
+</html>
+
+  
